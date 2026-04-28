@@ -2,7 +2,7 @@
 
 一款纯前端的图片局部放大标注工具，无需安装，打开浏览器即可使用。适用于论文插图、技术文档、产品展示等场景，帮助读者聚焦图片关键细节。
 
-打开https://belikeyouhs.github.io/zoom-in_view/即可使用
+打开https://belikeyouhs.github.io/zoom-in_view/ 即可使用
 ## ✨ 主要功能
 
 ### 🖼️ 图片上传
