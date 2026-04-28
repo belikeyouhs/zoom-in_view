@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>局部放大图工具 - Scientific Inset Zoom</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #242836;
+    --border: #2e3348; --text: #e2e4ed; --text-dim: #8b8fa3;
+    --accent: #6c7ee1; --accent-hover: #8b9bf0;
+    --danger: #e15c5c; --success: #5ce186;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+  .app-header { padding:14px 24px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:16px; }
+  .app-header h1 { font-size:18px; font-weight:600; }
+  .app-header .badge { font-size:11px; padding:2px 8px; border-radius:10px; background:var(--accent); color:#fff; }
+  .main-layout { display:flex; height:calc(100vh - 53px); }
+  .sidebar { width:330px; min-width:330px; background:var(--surface); border-right:1px solid var(--border); overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .panel { background:var(--surface2); border-radius:10px; padding:12px 14px; border:1px solid var(--border); }
+  .panel-title { font-size:12px; font-weight:600; color:var(--text-dim); text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px; display:flex; align-items:center; gap:5px; }
+  .panel-title .icon { font-size:14px; }
+  label { display:block; font-size:12px; color:var(--text-dim); margin-bottom:3px; margin-top:8px; }
+  label:first-child { margin-top:0; }
+  input[type="number"], input[type="text"], select { width:100%; padding:6px 9px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; outline:none; transition:border-color .2s; }
+  input:focus, select:focus { border-color:var(--accent); }
+  input[type="color"] { width:36px; height:26px; border:1px solid var(--border); border-radius:4px; background:none; cursor:pointer; padding:2px; }
+  .row { display:flex; gap:8px; align-items:flex-end; }
+  .row > * { flex:1; }
+  .row-narrow { gap:6px; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:7px 13px; border-radius:7px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-size:13px; font-weight:500; cursor:pointer; transition:all .15s; white-space:nowrap; }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn-primary:hover { background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .btn-danger { border-color:var(--danger); color:var(--danger); }
+  .btn-danger:hover { background:var(--danger); color:#fff; }
+  .btn-sm { padding:5px 10px; font-size:12px; }
+  .btn-block { width:100%; }
+  .toggle-group { display:flex; border-radius:7px; overflow:hidden; border:1px solid var(--border); }
+  .toggle-group .toggle-btn { flex:1; padding:6px 0; text-align:center; font-size:12px; font-weight:500; cursor:pointer; background:var(--bg); color:var(--text-dim); border:none; transition:all .15s; }
+  .toggle-group .toggle-btn.active { background:var(--accent); color:#fff; }
+  .toggle-group .toggle-btn:not(:last-child) { border-right:1px solid var(--border); }
+  .color-row { display:flex; align-items:center; gap:8px; margin-top:6px; }
+  .color-row input[type="color"] { flex-shrink:0; }
+  .color-row span { font-size:12px; color:var(--text-dim); }
+  .color-row .none-btn { font-size:11px; padding:2px 7px; border-radius:4px; border:1px solid var(--border); background:var(--bg); color:var(--text-dim); cursor:pointer; }
+  .color-row .none-btn.active { border-color:var(--danger); color:var(--danger); background:rgba(225,92,92,.1); }
+  .canvas-area { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  .toolbar { padding:7px 16px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .toolbar .sep { width:1px; height:22px; background:var(--border); }
+  .canvas-wrapper { flex:1; overflow:auto; display:flex; align-items:center; justify-content:center; padding:24px; position:relative; }
+  .canvas-container { position:relative; display:inline-block; line-height:0; }
+  #mainCanvas { display:block; border-radius:4px; cursor:crosshair; }
+  .selection-overlay { position:absolute; pointer-events:none; z-index:10; display:none; }
+  .selection-overlay.active { display:block; }
+  .drop-zone { border:2px dashed var(--border); border-radius:12px; padding:48px 24px; text-align:center; color:var(--text-dim); cursor:pointer; transition:all .2s; }
+  .drop-zone:hover, .drop-zone.dragover { border-color:var(--accent); color:var(--accent); }
+  .drop-zone .icon { font-size:40px; margin-bottom:12px; }
+  .drop-zone p { font-size:14px; }
+  .drop-zone .hint { font-size:12px; margin-top:6px; opacity:.6; }
+  .status-bar { padding:5px 16px; background:var(--surface); border-top:1px solid var(--border); font-size:11px; color:var(--text-dim); display:flex; gap:16px; }
+  .inset-item { display:flex; align-items:center; gap:8px; padding:7px 10px; background:var(--bg); border-radius:6px; margin-top:5px; font-size:12px; }
+  .inset-item .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .inset-item .info { flex:1; }
+  .inset-item .info .name { font-weight:500; }
+  .inset-item .info .meta { color:var(--text-dim); font-size:11px; }
+  input[type="range"] { width:100%; accent-color:var(--accent); }
+  .hidden { display:none !important; }
+  #fileInput { display:none; }
+  .tip { font-size:11px; color:var(--text-dim); margin-top:4px; font-style:italic; }
+  .shape-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:6px; }
+  .shape-btn { display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 4px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text-dim); cursor:pointer; transition:all .15s; font-size:10px; }
+  .shape-btn:hover { border-color:var(--accent); }
+  .shape-btn.active { border-color:var(--accent); background:rgba(108,126,225,.15); color:var(--accent); }
+  .shape-btn svg { width:24px; height:24px; }
+  .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.7); z-index:100; display:flex; align-items:center; justify-content:center; }
+  .modal { background:var(--surface); border-radius:12px; padding:24px; max-width:90vw; max-height:90vh; overflow:auto; border:1px solid var(--border); }
+  .modal h2 { font-size:16px; margin-bottom:16px; }
+  .modal img { max-width:100%; border-radius:4px; }
+  @media (max-width:900px) { .main-layout{flex-direction:column;} .sidebar{width:100%;min-width:unset;max-height:40vh;} }
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <h1>局部放大图工具</h1>
+  <div style="flex:1"></div>
+  <button class="btn btn-sm" onclick="exportImage()">📥 导出PNG</button>
+</div>
+
+<div class="main-layout">
+  <div class="sidebar">
+
+    <!-- Image -->
+    <div class="panel">
+      <div class="panel-title"><span class="icon">🖼️</span> 原图</div>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="icon">📁</div>
+        <p>拖放图片到此处，或点击上传</p>
+        <div class="hint">支持 PNG / JPG / SVG / WebP</div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*">
+      <div id="imageInfo" class="hidden" style="margin-top:8px;font-size:12px;color:var(--text-dim)"></div>
+    </div>
+
+    <!-- Shape -->
+    <div class="panel">
+      <div class="panel-title"><span class="icon">🔲</span> 选取形状</div>
+      <div class="shape-grid">
+        <button class="shape-btn active" data-shape="rect" onclick="setShape('rect')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="0"/></svg>
+          矩形
+        </button>
+        <button class="shape-btn" data-shape="roundrect" onclick="setShape('roundrect')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="4"/></svg>
+          圆角矩形
+        </button>
+        <button class="shape-btn" data-shape="ellipse" onclick="setShape('ellipse')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="7"/></svg>
+          椭圆
+        </button>
+        <button class="shape-btn" data-shape="circle" onclick="setShape('circle')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+          圆形
+        </button>
+      </div>
+    </div>
+
+    <!-- Selection Mode -->
+    <div class="panel">
+      <div class="panel-title"><span class="icon">📐</span> 选取模式</div>
+      <div class="toggle-group">
+        <button class="toggle-btn active" data-mode="free" onclick="setMode('free')">自由选取</button>
+        <button class="toggle-btn" data-mode="fixed" onclick="setMode('fixed')">固定大小</button>
+      </div>
+      <div id="fixedSizePanel" class="hidden">
+        <div class="row" style="margin-top:8px">
+          <div>
+            <label>宽度 (px)</label>
+            <input type="number" id="fixedW" value="100" min="10" max="2000">
+          </div>
+          <div>
+            <label>高度 (px)</label>
+            <input type="number" id="fixedH" value="100" min="10" max="2000">
+          </div>
+        </div>
+        <div style="margin-top:8px">
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+            <input type="checkbox" id="fixedUsePos" onchange="toggleFixedPos()">
+            相对位置定位
+          </label>
+        </div>
+        <div id="fixedPosPanel" class="hidden">
+          <p class="tip" style="margin-top:4px">以原图左上角为原点，选取框左上角坐标</p>
+          <div class="row" style="margin-top:4px">
+            <div>
+              <label>X (px)</label>
+              <input type="number" id="fixedPosX" value="0" min="0" onchange="applyFixedPos()">
+            </div>
+            <div>
+              <label>Y (px)</label>
+              <input type="number" id="fixedPosY" value="0" min="0" onchange="applyFixedPos()">
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="tip">在图片上拖动鼠标选取要放大的区域</p>
+    </div>
+
+    <!-- Zoom -->
+    <div class="panel">
+      <div class="panel-title"><span class="icon">🔍</span> 放大设置</div>
+      <label>放大倍数</label>
+      <div class="row row-narrow">
+        <input type="range" id="zoomLevel" min="1.5" max="10" step="0.5" value="3" oninput="updateZoomLabel()">
+        <span id="zoomLabel" style="font-size:13px;min-width:36px;text-align:right">3×</span>
+      </div>
+      <label>圆角半径 (仅圆角矩形)</label>
+      <input type="number" id="cornerRadius" value="8" min="0" max="100" step="1">
+    </div>
+
+    <!-- Placement -->
+    <div class="panel">
+      <div class="panel-title"><span class="icon">📌</span> 放置方式</div>
+      <div class="toggle-group">
+        <button class="toggle-btn active" data-place="outside" onclick="setPlacement('outside')">原图外</button>
+        <button class="toggle-btn" data-place="inside" onclick="setPlacement('inside')">原图内</button>
+      </div>
+      <div id="outsideOptions">
+        <label>放置方向</label>
+        <select id="outsideDir" onchange="redraw()">
+          <option value="right">右侧 →</option>
+          <option value="left">← 左侧</option>
+          <option value="top">↑ 上方</option>
+          <option value="bottom">↓ 下方</option>
+          <option value="top-right">↗ 右上</option>
+          <option value="top-left">↖ 左上</option>
+          <option value="bottom-right">↘ 右下</option>
+          <option value="bottom-left">↙ 左下</option>
+        </select>
+        <label>与原图间距 (px)</label>
+        <input type="number" id="outsideGap" value="30" min="5" max="200">
+      </div>
+      <div id="insideOptions" class="hidden">
+        <label>位置</label>
+        <select id="insidePos" onchange="redraw()">
+          <option value="top-left">左上</option>
+          <option value="top-right">右上</option>
+          <option value="bottom-left">左下</option>
+          <option value="bottom-right" selected>右下</option>
+          <option value="center">居中</option>
+          <option value="custom">自定义拖动</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Colors & Lines -->
+    <div class="panel">
+      <div class="panel-title"><span class="icon">🎨</span> 边框与连线</div>
+
+      <label>选取框边框</label>
+      <div class="color-row">
+        <input type="color" id="selBorderColor" value="#6c7ee1" onchange="redraw()">
+        <span>选取框颜色</span>
+        <button class="none-btn" id="selBorderNone" onclick="toggleNone('selBorder')">无</button>
+      </div>
+
+      <label style="margin-top:6px">放大图边框</label>
+      <div class="color-row">
+        <input type="color" id="insetBorderColor" value="#6c7ee1" onchange="redraw()">
+        <span>放大图颜色</span>
+        <button class="none-btn" id="insetBorderNone" onclick="toggleNone('insetBorder')">无</button>
+      </div>
+      <label>边框粗细</label>
+      <input type="number" id="borderWidth" value="2" min="0.5" max="8" step="0.5">
+
+      <div style="border-top:1px solid var(--border); margin:10px 0 6px;"></div>
+
+      <label>连接线</label>
+      <div class="color-row">
+        <input type="color" id="lineColor" value="#ff0000" onchange="redraw()">
+        <span>连线颜色</span>
+        <button class="none-btn" id="lineNone" onclick="toggleNone('line')">无</button>
+      </div>
+      <label>线宽</label>
+      <input type="number" id="lineWidth" value="1.5" min="0.5" max="5" step="0.5">
+      <div style="margin-top:6px">
+        <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+          <input type="checkbox" id="showLines" checked onchange="redraw()">
+          显示连接线
+        </label>
+      </div>
+    </div>
+
+    <!-- Inset List -->
+    <div class="panel">
+      <div class="panel-title"><span class="icon">📋</span> 放大区域列表</div>
+      <div id="insetList"><p style="font-size:12px;color:var(--text-dim)">暂无放大区域</p></div>
+      <button class="btn btn-sm btn-danger btn-block" style="margin-top:8px" onclick="clearAll()">清除全部</button>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div class="canvas-area">
+    <div class="toolbar">
+      <button class="btn btn-sm btn-primary" id="btnAdd" onclick="confirmSelection()" disabled>✓ 确认选取</button>
+      <button class="btn btn-sm" id="btnCancel" onclick="cancelSelection()" disabled>✕ 取消</button>
+      <div class="sep"></div>
+      <button class="btn btn-sm" onclick="undoLast()">↩ 撤销</button>
+      <div class="sep"></div>
+      <button class="btn btn-sm btn-danger" id="btnRemoveImg" onclick="removeImage()" style="display:none">🗑 移除图片</button>
+      <div class="sep"></div>
+      <span style="font-size:12px;color:var(--text-dim)" id="coordDisplay">坐标: -</span>
+    </div>
+    <div class="canvas-wrapper" id="canvasWrapper">
+      <div id="uploadState" class="drop-zone" style="max-width:400px" onclick="document.getElementById('fileInput').click()">
+        <div class="icon">🖼️</div>
+        <p>请先上传一张图片</p>
+        <div class="hint">支持 PNG / JPG / SVG / WebP</div>
+      </div>
+      <div id="workState" class="hidden">
+        <div class="canvas-container" id="canvasContainer">
+          <canvas id="mainCanvas"></canvas>
+          <svg class="lines-overlay" id="linesOverlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:15;"></svg>
+          <canvas id="selOverlay" class="selection-overlay" style="position:absolute;top:0;left:0;pointer-events:none;z-index:10;"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="status-bar">
+      <span id="statusMode">模式: 自由选取 · 矩形</span>
+      <span id="statusSize">图片: -</span>
+      <span id="statusZoom">放大: 3×</span>
+      <span id="statusCount">放大区域: 0</span>
+    </div>
+  </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal-overlay hidden" id="exportModal" onclick="if(event.target===this)closeExportModal()">
+  <div class="modal">
+    <h2>导出预览</h2>
+    <img id="exportPreview" src="">
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeExportModal()">关闭</button>
+      <a class="btn btn-primary" id="exportDownload" download="inset_zoom.png">💾 下载</a>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ───
+let img = null, imgW = 0, imgH = 0, scale = 1;
+let mode = 'free';      // free | fixed
+let shape = 'rect';     // rect | roundrect | ellipse | circle
+let placement = 'outside';
+let selection = null;   // {x,y,w,h} in image coords (currently-being-drawn)
+let insets = [];
+let curOx = 0, curOy = 0, curDs = 1; // current draw offset & scale after redraw
+
+// Drag state machine: dragType = null | 'new' | 'sel' | 'inset'
+let dragType = null, dragTarget = null, dragStart = null, dragOff = {x:0,y:0};
+
+// None-state for colors
+let selBorderNone = false;
+let insetBorderNone = false;
+let lineNone = false;
+
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('canvasContainer');
+const selOverlay = document.getElementById('selOverlay');
+const selCtx = selOverlay.getContext('2d');
+
+// ─── File Upload ───
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadImage(e.target.files[0]); });
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]); });
+document.getElementById('canvasWrapper').addEventListener('dragover', e => e.preventDefault());
+document.getElementById('canvasWrapper').addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]); });
+
+function removeImage() {
+  img = null; imgW = 0; imgH = 0; scale = 1;
+  clearAll();
+  document.getElementById('workState').classList.add('hidden');
+  document.getElementById('uploadState').classList.remove('hidden');
+  document.getElementById('dropZone').classList.remove('hidden');
+  document.getElementById('imageInfo').classList.add('hidden');
+  document.getElementById('btnRemoveImg').style.display = 'none';
+  document.getElementById('statusSize').textContent = '图片: -';
+  document.getElementById('fileInput').value = '';
+}
+
+function loadImage(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    img = new Image();
+    img.onload = () => {
+      imgW = img.naturalWidth; imgH = img.naturalHeight;
+      setupCanvas();
+      document.getElementById('dropZone').classList.add('hidden');
+      document.getElementById('uploadState').classList.add('hidden');
+      document.getElementById('workState').classList.remove('hidden');
+      document.getElementById('imageInfo').classList.remove('hidden');
+      document.getElementById('imageInfo').textContent = `${file.name} — ${imgW}×${imgH}px`;
+      document.getElementById('statusSize').textContent = `图片: ${imgW}×${imgH}`;
+      document.getElementById('btnRemoveImg').style.display = '';
+      clearAll();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function setupCanvas() {
+  const wrap = document.getElementById('canvasWrapper');
+  const maxW = wrap.clientWidth - 48, maxH = wrap.clientHeight - 48;
+  scale = Math.min(1, maxW / imgW, maxH / imgH);
+  const dw = Math.round(imgW * scale), dh = Math.round(imgH * scale);
+  canvas.width = dw; canvas.height = dh;
+  canvas.style.width = dw + 'px'; canvas.style.height = dh + 'px';
+  container.style.width = dw + 'px'; container.style.height = dh + 'px';
+  selOverlay.width = dw; selOverlay.height = dh;
+  selOverlay.style.width = dw + 'px'; selOverlay.style.height = dh + 'px';
+  redraw();
+}
+
+// ─── Mode / Shape / Placement ───
+function setShape(s) {
+  shape = s;
+  document.querySelectorAll('[data-shape]').forEach(b => b.classList.toggle('active', b.dataset.shape === s));
+  updateStatusMode();
+  redraw();
+}
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+  document.getElementById('fixedSizePanel').classList.toggle('hidden', m !== 'fixed');
+  updateStatusMode();
+  cancelSelection();
+}
+
+function updateStatusMode() {
+  const shapeNames = { rect:'矩形', roundrect:'圆角矩形', ellipse:'椭圆', circle:'圆形' };
+  document.getElementById('statusMode').textContent = `模式: ${mode === 'free' ? '自由选取' : '固定大小'} · ${shapeNames[shape]}`;
+}
+
+function setPlacement(p) {
+  placement = p;
+  document.querySelectorAll('[data-place]').forEach(b => b.classList.toggle('active', b.dataset.place === p));
+  document.getElementById('outsideOptions').classList.toggle('hidden', p !== 'outside');
+  document.getElementById('insideOptions').classList.toggle('hidden', p !== 'inside');
+  redraw();
+}
+
+function updateZoomLabel() {
+  const v = document.getElementById('zoomLevel').value;
+  document.getElementById('zoomLabel').textContent = v + '×';
+  document.getElementById('statusZoom').textContent = `放大: ${v}×`;
+}
+
+function toggleNone(which) {
+  if (which === 'selBorder') { selBorderNone = !selBorderNone; document.getElementById('selBorderNone').classList.toggle('active', selBorderNone); }
+  if (which === 'insetBorder') { insetBorderNone = !insetBorderNone; document.getElementById('insetBorderNone').classList.toggle('active', insetBorderNone); }
+  if (which === 'line') { lineNone = !lineNone; document.getElementById('lineNone').classList.toggle('active', lineNone); }
+  redraw();
+}
+
+// ─── Hit test: selection box (in image coords) ───
+function hitTestSel(mx, my) {
+  for (let i = insets.length - 1; i >= 0; i--) {
+    const s = insets[i].sel;
+    if (mx >= s.x && mx <= s.x + s.w && my >= s.y && my <= s.y + s.h) {
+      return insets[i];
+    }
+  }
+  return null;
+}
+
+// ─── Hit test: inset box (in image coords) ───
+function hitTestInset(mx, my) {
+  for (let i = insets.length - 1; i >= 0; i--) {
+    const ins = insets[i];
+    const iw = ins.sel.w * ins.zoom, ih = ins.sel.h * ins.zoom;
+    if (mx >= ins.insetX && mx <= ins.insetX + iw && my >= ins.insetY && my <= ins.insetY + ih) {
+      return ins;
+    }
+  }
+  return null;
+}
+
+// ─── Toggle fixed-size relative position panel ───
+function toggleFixedPos() {
+  const on = document.getElementById('fixedUsePos').checked;
+  document.getElementById('fixedPosPanel').classList.toggle('hidden', !on);
+  if (on) applyFixedPos();
+}
+
+// ─── Apply fixed-size relative position ───
+function applyFixedPos() {
+  if (!img || !document.getElementById('fixedUsePos').checked) return;
+  const fw = parseInt(document.getElementById('fixedW').value) || 100;
+  const fh = parseInt(document.getElementById('fixedH').value) || 100;
+  const x = Math.max(0, Math.min(parseInt(document.getElementById('fixedPosX').value) || 0, imgW - fw));
+  const y = Math.max(0, Math.min(parseInt(document.getElementById('fixedPosY').value) || 0, imgH - fh));
+  selection = { x, y, w: fw, h: fh };
+  showSelection();
+  document.getElementById('btnAdd').disabled = false;
+  document.getElementById('btnCancel').disabled = false;
+}
+
+// ─── Canvas Mouse ───
+canvas.addEventListener('mousedown', e => {
+  if (!img) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) / curDs - curOx;
+  const my = (e.clientY - rect.top) / curDs - curOy;
+
+  // 1) Hit test: existing inset box (topmost first)
+  const hitI = hitTestInset(mx, my);
+  if (hitI) {
+    dragType = 'inset';
+    dragTarget = hitI;
+    dragOff = { x: mx - hitI.insetX, y: my - hitI.insetY };
+    hitI.insidePos = 'custom'; // lock so redraw won't overwrite
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  // 2) Hit test: existing selection box
+  const hitS = hitTestSel(mx, my);
+  if (hitS) {
+    dragType = 'sel';
+    dragTarget = hitS;
+    dragOff = { x: mx - hitS.sel.x, y: my - hitS.sel.y };
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  // 3) No hit — start new selection
+  if (mode === 'fixed') {
+    if (document.getElementById('fixedUsePos').checked) {
+      // Use relative position
+      applyFixedPos();
+      return;
+    }
+    const fw = parseInt(document.getElementById('fixedW').value) || 100;
+    const fh = parseInt(document.getElementById('fixedH').value) || 100;
+    selection = { x: Math.max(0, Math.min(mx - fw/2, imgW - fw)), y: Math.max(0, Math.min(my - fh/2, imgH - fh)), w: fw, h: fh };
+    showSelection();
+    document.getElementById('btnAdd').disabled = false;
+    document.getElementById('btnCancel').disabled = false;
+  } else {
+    dragType = 'new';
+    dragStart = { x: mx, y: my };
+    selection = null;
+    clearSelOverlay();
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) / curDs - curOx;
+  const my = (e.clientY - rect.top) / curDs - curOy;
+  document.getElementById('coordDisplay').textContent = `坐标: (${Math.round(mx)}, ${Math.round(my)})`;
+
+  // ── Dragging an inset box ──
+  if (dragType === 'inset' && dragTarget) {
+    const ins = dragTarget;
+    const iw = ins.sel.w * ins.zoom, ih = ins.sel.h * ins.zoom;
+    ins.insetX = Math.max(-iw * 0.3, Math.min(mx - dragOff.x, imgW - iw * 0.7));
+    ins.insetY = Math.max(-ih * 0.3, Math.min(my - dragOff.y, imgH - ih * 0.7));
+    redraw();
+    return;
+  }
+
+  // ── Dragging a selection box ──
+  if (dragType === 'sel' && dragTarget) {
+    const s = dragTarget.sel;
+    s.x = Math.max(0, Math.min(mx - dragOff.x, imgW - s.w));
+    s.y = Math.max(0, Math.min(my - dragOff.y, imgH - s.h));
+    redraw();
+    return;
+  }
+
+  // ── Drawing new selection ──
+  if (dragType === 'new' && dragStart) {
+    const sx = Math.max(0, Math.min(dragStart.x, mx));
+    const sy = Math.max(0, Math.min(dragStart.y, my));
+    const ex = Math.max(0, Math.min(Math.max(dragStart.x, mx), imgW));
+    const ey = Math.max(0, Math.min(Math.max(dragStart.y, my), imgH));
+    selection = { x: sx, y: sy, w: ex - sx, h: ey - sy };
+    showSelection();
+    return;
+  }
+
+  // ── Hover cursor ──
+  if (!dragType) {
+    if (hitTestInset(mx, my)) canvas.style.cursor = 'grab';
+    else if (hitTestSel(mx, my)) canvas.style.cursor = 'grab';
+    else canvas.style.cursor = 'crosshair';
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (dragType === 'new' && selection && selection.w > 5 && selection.h > 5) {
+    document.getElementById('btnAdd').disabled = false;
+    document.getElementById('btnCancel').disabled = false;
+  }
+  dragType = null;
+  dragTarget = null;
+  dragStart = null;
+  canvas.style.cursor = 'crosshair';
+});
+canvas.addEventListener('mouseleave', () => {
+  dragType = null;
+  dragTarget = null;
+  dragStart = null;
+});
+
+function showSelection() {
+  if (!selection) return;
+  const dw = canvas.width, dh = canvas.height;
+  selOverlay.width = dw; selOverlay.height = dh;
+  selCtx.clearRect(0, 0, dw, dh);
+  selCtx.save();
+  selCtx.scale(curDs, curDs);
+
+  const borderColor = selBorderNone ? null : document.getElementById('selBorderColor').value;
+  drawShapePath(selCtx, curOx + selection.x, curOy + selection.y, selection.w, selection.h);
+
+  if (borderColor) {
+    selCtx.strokeStyle = borderColor;
+    selCtx.lineWidth = 2 / curDs;
+    selCtx.setLineDash([6, 4]);
+    selCtx.stroke();
+    selCtx.setLineDash([]);
+  }
+
+  // Dim outside — cover entire canvas
+  selCtx.save();
+  selCtx.globalCompositeOperation = 'destination-over';
+  selCtx.fillStyle = 'rgba(0,0,0,0.25)';
+  selCtx.fillRect(0, 0, dw / curDs, dh / curDs);
+  selCtx.restore();
+
+  selCtx.restore();
+  selOverlay.classList.add('active');
+}
+
+function clearSelOverlay() {
+  selCtx.clearRect(0, 0, selOverlay.width, selOverlay.height);
+  selOverlay.classList.remove('active');
+}
+
+function cancelSelection() {
+  selection = null;
+  clearSelOverlay();
+  document.getElementById('btnAdd').disabled = true;
+  document.getElementById('btnCancel').disabled = true;
+}
+
+// ─── Shape Path Helper ───
+function drawShapePath(c, x, y, w, h) {
+  const cr = parseFloat(document.getElementById('cornerRadius').value) || 8;
+  c.beginPath();
+  if (shape === 'rect') {
+    c.rect(x, y, w, h);
+  } else if (shape === 'roundrect') {
+    const r = Math.min(cr, w/2, h/2);
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  } else if (shape === 'ellipse') {
+    c.ellipse(x + w/2, y + h/2, w/2, h/2, 0, 0, Math.PI * 2);
+  } else if (shape === 'circle') {
+    const r = Math.min(w, h) / 2;
+    c.arc(x + w/2, y + h/2, r, 0, Math.PI * 2);
+  }
+}
+
+function clipShape(c, x, y, w, h) {
+  drawShapePath(c, x, y, w, h);
+  c.clip();
+}
+
+// ─── Confirm ───
+function confirmSelection() {
+  if (!selection || !img) return;
+  const inset = {
+    id: Date.now(),
+    sel: { ...selection },
+    shape: shape,
+    zoom: parseFloat(document.getElementById('zoomLevel').value) || 3,
+    borderWidth: parseFloat(document.getElementById('borderWidth').value) || 2,
+    selBorderColor: selBorderNone ? null : document.getElementById('selBorderColor').value,
+    insetBorderColor: insetBorderNone ? null : document.getElementById('insetBorderColor').value,
+    lineColor: lineNone ? null : document.getElementById('lineColor').value,
+    lineWidth: parseFloat(document.getElementById('lineWidth').value) || 1.5,
+    showLines: document.getElementById('showLines').checked && !lineNone,
+    placement: placement,
+    outsideDir: document.getElementById('outsideDir').value,
+    outsideGap: parseInt(document.getElementById('outsideGap').value) || 30,
+    insidePos: document.getElementById('insidePos').value,
+    cornerRadius: parseFloat(document.getElementById('cornerRadius').value) || 8,
+    insetX: 0, insetY: 0,
+    color: `hsl(${(insets.length * 67 + 200) % 360}, 60%, 60%)`
+  };
+  insets.push(inset);
+  cancelSelection();
+  updateInsetList();
+  redraw();
+}
+
+// ─── Inset List ───
+function updateInsetList() {
+  const el = document.getElementById('insetList');
+  const shapeNames = { rect:'矩形', roundrect:'圆角矩形', ellipse:'椭圆', circle:'圆形' };
+  if (insets.length === 0) {
+    el.innerHTML = '<p style="font-size:12px;color:var(--text-dim)">暂无放大区域</p>';
+    document.getElementById('statusCount').textContent = '放大区域: 0';
+    return;
+  }
+  el.innerHTML = insets.map((ins, i) => `
+    <div class="inset-item">
+      <div class="dot" style="background:${ins.color}"></div>
+      <div class="info">
+        <div class="name">#${i+1} — ${ins.zoom}× · ${shapeNames[ins.shape]}</div>
+        <div class="meta">(${Math.round(ins.sel.x)}, ${Math.round(ins.sel.y)}) ${Math.round(ins.sel.w)}×${Math.round(ins.sel.h)}</div>
+      </div>
+      <button class="btn btn-sm btn-danger" onclick="removeInset(${ins.id})" style="padding:3px 8px">✕</button>
+    </div>
+  `).join('');
+  document.getElementById('statusCount').textContent = `放大区域: ${insets.length}`;
+}
+
+function removeInset(id) { insets = insets.filter(i => i.id !== id); updateInsetList(); redraw(); }
+function undoLast() { if (insets.length) { insets.pop(); updateInsetList(); redraw(); } }
+function clearAll() { insets = []; cancelSelection(); updateInsetList(); redraw(); }
+
+// ─── Line–rectangle intersection (used for overlap detection) ───
+function lineIntersectsRect(x1, y1, x2, y2, rx, ry, rw, rh) {
+  // Check if either endpoint is inside the rect
+  if (x1 >= rx && x1 <= rx + rw && y1 >= ry && y1 <= ry + rh) return true;
+  if (x2 >= rx && x2 <= rx + rw && y2 >= ry && y2 <= ry + rh) return true;
+  // Check intersection with each of the 4 edges
+  if (lineSegIntersect(x1, y1, x2, y2, rx, ry, rx + rw, ry)) return true;
+  if (lineSegIntersect(x1, y1, x2, y2, rx + rw, ry, rx + rw, ry + rh)) return true;
+  if (lineSegIntersect(x1, y1, x2, y2, rx, ry + rh, rx + rw, ry + rh)) return true;
+  if (lineSegIntersect(x1, y1, x2, y2, rx, ry, rx, ry + rh)) return true;
+  return false;
+}
+function lineSegIntersect(x1, y1, x2, y2, x3, y3, x4, y4) {
+  const d = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3);
+  if (Math.abs(d) < 1e-10) return false;
+  const t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / d;
+  const u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / d;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+// ─── Compute outside position ───
+function computeOutsidePos(ins) {
+  const iw = ins.sel.w * ins.zoom, ih = ins.sel.h * ins.zoom;
+  const dir = ins.outsideDir, g = ins.outsideGap;
+  const scx = ins.sel.x + ins.sel.w / 2, scy = ins.sel.y + ins.sel.h / 2;
+  const pos = { insetX: 0, insetY: 0 };
+  if (dir === 'right')       { pos.insetX = imgW + g; pos.insetY = scy - ih/2; }
+  else if (dir === 'left')   { pos.insetX = -g - iw; pos.insetY = scy - ih/2; }
+  else if (dir === 'top')    { pos.insetX = scx - iw/2; pos.insetY = -g - ih; }
+  else if (dir === 'bottom') { pos.insetX = scx - iw/2; pos.insetY = imgH + g; }
+  else if (dir === 'top-right')    { pos.insetX = imgW + g; pos.insetY = -g - ih; }
+  else if (dir === 'top-left')     { pos.insetX = -g - iw; pos.insetY = -g - ih; }
+  else if (dir === 'bottom-right') { pos.insetX = imgW + g; pos.insetY = imgH + g; }
+  else if (dir === 'bottom-left')  { pos.insetX = -g - iw; pos.insetY = imgH + g; }
+  return pos;
+}
+
+// ─── Compute inside position (relative to the original image corners) ───
+function computeInsidePos(pos, iw, ih, g, ins) {
+  // Place the inset at the corners/center of the original image
+  let ix, iy;
+  if (pos === 'top-left') {
+    ix = g;
+    iy = g;
+  } else if (pos === 'top-right') {
+    ix = imgW - iw - g;
+    iy = g;
+  } else if (pos === 'bottom-left') {
+    ix = g;
+    iy = imgH - ih - g;
+  } else if (pos === 'bottom-right') {
+    ix = imgW - iw - g;
+    iy = imgH - ih - g;
+  } else if (pos === 'center') {
+    ix = (imgW - iw) / 2;
+    iy = (imgH - ih) / 2;
+  } else { // custom — keep existing
+    return { insetX: ins.insetX, insetY: ins.insetY };
+  }
+  // Clamp to image bounds
+  ix = Math.max(0, Math.min(ix, imgW - iw));
+  iy = Math.max(0, Math.min(iy, imgH - ih));
+  return { insetX: ix, insetY: iy };
+}
+
+// ─── Smart connection line computation ───
+// Always produces exactly 2 lines, never sharing an endpoint.
+function computeConnectionLines(sel, ins, insW, insH) {
+  const selCx = sel.x + sel.w / 2, selCy = sel.y + sel.h / 2;
+  const insCx = ins.x + insW / 2, insCy = ins.y + insH / 2;
+  const dx = insCx - selCx, dy = insCy - selCy;
+
+  // 4 corners of selection box
+  const sc = [
+    { x: sel.x,        y: sel.y,         id: 'tl' },
+    { x: sel.x + sel.w, y: sel.y,        id: 'tr' },
+    { x: sel.x + sel.w, y: sel.y + sel.h, id: 'br' },
+    { x: sel.x,        y: sel.y + sel.h,  id: 'bl' }
+  ];
+  // 4 corners of inset box
+  const ic = [
+    { x: ins.x,         y: ins.y,          id: 'tl' },
+    { x: ins.x + insW,  y: ins.y,          id: 'tr' },
+    { x: ins.x + insW,  y: ins.y + insH,   id: 'br' },
+    { x: ins.x,         y: ins.y + insH,   id: 'bl' }
+  ];
+
+  // Pick the 2 selection corners on the side facing the inset
+  let sPair;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    // Inset is mainly to the right or left
+    sPair = dx > 0 ? [sc[1], sc[2]] : [sc[0], sc[3]]; // tr,br  or  tl,bl
+  } else {
+    // Inset is mainly above or below
+    sPair = dy > 0 ? [sc[3], sc[2]] : [sc[0], sc[1]]; // bl,br  or  tl,tr
+  }
+
+  // Pick the 2 inset corners on the side facing the selection
+  let iPair;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    iPair = dx > 0 ? [ic[0], ic[3]] : [ic[1], ic[2]]; // tl,bl  or  tr,br
+  } else {
+    iPair = dy > 0 ? [ic[0], ic[1]] : [ic[3], ic[2]]; // tl,tr  or  bl,br
+  }
+
+  // Match: try both pairings, pick the one with smaller total length
+  const cost0 = dist(sPair[0], iPair[0]) + dist(sPair[1], iPair[1]);
+  const cost1 = dist(sPair[0], iPair[1]) + dist(sPair[1], iPair[0]);
+
+  if (cost0 <= cost1) {
+    return [
+      { x1: sPair[0].x, y1: sPair[0].y, x2: iPair[0].x, y2: iPair[0].y },
+      { x1: sPair[1].x, y1: sPair[1].y, x2: iPair[1].x, y2: iPair[1].y }
+    ];
+  } else {
+    return [
+      { x1: sPair[0].x, y1: sPair[0].y, x2: iPair[1].x, y2: iPair[1].y },
+      { x1: sPair[1].x, y1: sPair[1].y, x2: iPair[0].x, y2: iPair[0].y }
+    ];
+  }
+}
+
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+// ─── Main Draw ───
+function redraw() {
+  if (!img) return;
+
+  // Compute positions (outside or inside)
+  const computed = insets.map(ins => {
+    const ci = { ...ins };
+    if (ins.placement === 'outside') {
+      const pos = computeOutsidePos(ins);
+      ci.insetX = pos.insetX;
+      ci.insetY = pos.insetY;
+    } else if (ins.insidePos === 'custom') {
+      // Keep the dragged position
+      ci.insetX = ins.insetX;
+      ci.insetY = ins.insetY;
+    } else {
+      const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
+      const g = 20;
+      const pos = computeInsidePos(ci.insidePos, iw, ih, g, ci);
+      ci.insetX = pos.insetX;
+      ci.insetY = pos.insetY;
+    }
+    return ci;
+  });
+
+  // Bounding box
+  let totalW = imgW, totalH = imgH, offX = 0, offY = 0;
+  for (const ci of computed) {
+    const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
+    if (ci.insetX < offX) offX = ci.insetX;
+    if (ci.insetY < offY) offY = ci.insetY;
+    if (ci.insetX + iw > totalW) totalW = ci.insetX + iw;
+    if (ci.insetY + ih > totalH) totalH = ci.insetY + ih;
+  }
+
+  const pad = 20;
+  const ox = -offX + pad, oy = -offY + pad;
+  totalW = totalW - offX + pad * 2;
+  totalH = totalH - offY + pad * 2;
+
+  const wrap = document.getElementById('canvasWrapper');
+  const ds = Math.min(1, (wrap.clientWidth - 48) / totalW, (wrap.clientHeight - 48) / totalH);
+  const dw = Math.round(totalW * ds), dh = Math.round(totalH * ds);
+
+  canvas.width = dw; canvas.height = dh;
+  canvas.style.width = dw + 'px'; canvas.style.height = dh + 'px';
+  container.style.width = dw + 'px'; container.style.height = dh + 'px';
+  selOverlay.width = dw; selOverlay.height = dh;
+  selOverlay.style.width = dw + 'px'; selOverlay.style.height = dh + 'px';
+
+  ctx.clearRect(0, 0, dw, dh);
+  ctx.save();
+  ctx.scale(ds, ds);
+
+  // Transparent background — page bg shows through
+  ctx.clearRect(0, 0, totalW, totalH);
+
+  // Original image
+  ctx.drawImage(img, ox, oy, imgW, imgH);
+
+  // Selection highlights on original
+  for (const ci of computed) {
+    if (ci.selBorderColor) {
+      ctx.save();
+      ctx.strokeStyle = ci.selBorderColor;
+      ctx.lineWidth = 1.5 / ds;
+      ctx.setLineDash([5, 3]);
+      const prevShape = shape; shape = ci.shape;
+      drawShapePath(ctx, ox + ci.sel.x, oy + ci.sel.y, ci.sel.w, ci.sel.h);
+      shape = prevShape;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  }
+
+  // Draw each inset
+  for (const ci of computed) {
+    const ix = ox + ci.insetX, iy = oy + ci.insetY;
+    const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
+
+    // Clip & draw magnified content
+    ctx.save();
+    clipShape(ctx, ix, iy, iw, ih);
+    ctx.drawImage(img, ci.sel.x, ci.sel.y, ci.sel.w, ci.sel.h, ix, iy, iw, ih);
+    ctx.restore();
+
+    // Inset border
+    if (ci.insetBorderColor) {
+      ctx.save();
+      ctx.strokeStyle = ci.insetBorderColor;
+      ctx.lineWidth = ci.borderWidth;
+      drawShapePath(ctx, ix, iy, iw, ih);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Connection lines
+    if (ci.showLines && ci.lineColor) {
+      const lines = computeConnectionLines(
+        { x: ox + ci.sel.x, y: oy + ci.sel.y, w: ci.sel.w, h: ci.sel.h },
+        { x: ix, y: iy },
+        iw, ih
+      );
+
+      // Check if any line is covered by another inset
+      let covered = false;
+      for (const ln of lines) {
+        for (const other of computed) {
+          if (other.id === ci.id) continue;
+          const ox2 = ox + other.insetX, oy2 = oy + other.insetY;
+          const ow2 = other.sel.w * other.zoom, oh2 = other.sel.h * other.zoom;
+          if (lineIntersectsRect(ln.x1, ln.y1, ln.x2, ln.y2, ox2, oy2, ow2, oh2)) {
+            covered = true;
+            break;
+          }
+        }
+        if (covered) break;
+      }
+
+      if (covered) {
+        // Show warning near the inset
+        ctx.save();
+        const warnX = ix + iw / 2, warnY = iy - 10;
+        ctx.font = 'bold 12px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        const tw = ctx.measureText('放大图覆盖了连线').width;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(warnX - tw / 2 - 6, warnY - 16, tw + 12, 20);
+        ctx.fillStyle = '#ff9800';
+        ctx.fillText('放大图覆盖了连线', warnX, warnY);
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = ci.lineColor;
+        ctx.lineWidth = ci.lineWidth;
+        for (const ln of lines) {
+          ctx.beginPath();
+          ctx.moveTo(ln.x1, ln.y1);
+          ctx.lineTo(ln.x2, ln.y2);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  ctx.restore();
+
+  curOx = ox; curOy = oy; curDs = ds;
+
+  // Re-draw selection overlay on top (must be after curOx/curOy/curDs are set)
+  if (selection) showSelection();
+}
+
+// ─── Export ───
+function exportImage() {
+  if (!img || insets.length === 0) { alert('请先上传图片并添加至少一个放大区域'); return; }
+
+  const computed = insets.map(ins => {
+    const ci = { ...ins };
+    if (ins.placement === 'outside') {
+      const p = computeOutsidePos(ins);
+      ci.insetX = p.insetX;
+      ci.insetY = p.insetY;
+    } else if (ins.insidePos === 'custom') {
+      // Keep the dragged position
+      ci.insetX = ins.insetX;
+      ci.insetY = ins.insetY;
+    } else {
+      const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
+      const g = 20;
+      const p = computeInsidePos(ci.insidePos, iw, ih, g, ci);
+      ci.insetX = p.insetX;
+      ci.insetY = p.insetY;
+    }
+    return ci;
+  });
+
+  let totalW = imgW, totalH = imgH, offX = 0, offY = 0;
+  for (const ci of computed) {
+    const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
+    if (ci.insetX < offX) offX = ci.insetX;
+    if (ci.insetY < offY) offY = ci.insetY;
+    if (ci.insetX + iw > totalW) totalW = ci.insetX + iw;
+    if (ci.insetY + ih > totalH) totalH = ci.insetY + ih;
+  }
+
+  const pad = 40;
+  const ox = -offX + pad, oy = -offY + pad;
+  totalW = totalW - offX + pad * 2;
+  totalH = totalH - offY + pad * 2;
+
+  const ec = document.createElement('canvas');
+  ec.width = totalW; ec.height = totalH;
+  const ex = ec.getContext('2d');
+
+  ex.fillStyle = '#ffffff';
+  ex.fillRect(0, 0, totalW, totalH);
+  ex.drawImage(img, ox, oy, imgW, imgH);
+
+  // For export, draw each inset using its own shape
+  for (const ci of computed) {
+    const ix = ox + ci.insetX, iy = oy + ci.insetY;
+    const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
+    const prevShape = shape;
+    shape = ci.shape;
+
+    // Selection highlight on original
+    if (ci.selBorderColor) {
+      ex.save();
+      ex.strokeStyle = ci.selBorderColor;
+      ex.lineWidth = 1.5;
+      ex.setLineDash([5, 3]);
+      drawShapePath(ex, ox + ci.sel.x, oy + ci.sel.y, ci.sel.w, ci.sel.h);
+      ex.stroke();
+      ex.setLineDash([]);
+      ex.restore();
+    }
+
+    // Clip & draw magnified content
+    ex.save();
+    clipShape(ex, ix, iy, iw, ih);
+    ex.drawImage(img, ci.sel.x, ci.sel.y, ci.sel.w, ci.sel.h, ix, iy, iw, ih);
+    ex.restore();
+
+    // Inset border
+    if (ci.insetBorderColor) {
+      ex.save();
+      ex.strokeStyle = ci.insetBorderColor;
+      ex.lineWidth = ci.borderWidth;
+      drawShapePath(ex, ix, iy, iw, ih);
+      ex.stroke();
+      ex.restore();
+    }
+
+    // Connection lines
+    if (ci.showLines && ci.lineColor) {
+      const lines = computeConnectionLines(
+        { x: ox + ci.sel.x, y: oy + ci.sel.y, w: ci.sel.w, h: ci.sel.h },
+        { x: ix, y: iy }, iw, ih
+      );
+
+      let covered = false;
+      for (const ln of lines) {
+        for (const other of computed) {
+          if (other.id === ci.id) continue;
+          const ox2 = ox + other.insetX, oy2 = oy + other.insetY;
+          const ow2 = other.sel.w * other.zoom, oh2 = other.sel.h * other.zoom;
+          if (lineIntersectsRect(ln.x1, ln.y1, ln.x2, ln.y2, ox2, oy2, ow2, oh2)) {
+            covered = true;
+            break;
+          }
+        }
+        if (covered) break;
+      }
+
+      if (covered) {
+        ex.save();
+        const warnX = ix + iw / 2, warnY = iy - 10;
+        ex.font = 'bold 12px -apple-system, sans-serif';
+        ex.textAlign = 'center';
+        ex.textBaseline = 'bottom';
+        const tw = ex.measureText('放大图覆盖了连线').width;
+        ex.fillStyle = 'rgba(0,0,0,0.6)';
+        ex.fillRect(warnX - tw / 2 - 6, warnY - 16, tw + 12, 20);
+        ex.fillStyle = '#ff9800';
+        ex.fillText('放大图覆盖了连线', warnX, warnY);
+        ex.restore();
+      } else {
+        ex.strokeStyle = ci.lineColor;
+        ex.lineWidth = ci.lineWidth;
+        for (const ln of lines) {
+          ex.beginPath();
+          ex.moveTo(ln.x1, ln.y1);
+          ex.lineTo(ln.x2, ln.y2);
+          ex.stroke();
+        }
+      }
+    }
+
+    shape = prevShape;
+  }
+
+  const dataURL = ec.toDataURL('image/png');
+  document.getElementById('exportPreview').src = dataURL;
+  document.getElementById('exportDownload').href = dataURL;
+  document.getElementById('exportModal').classList.remove('hidden');
+}
+
+function closeExportModal() { document.getElementById('exportModal').classList.add('hidden'); }
+
+window.addEventListener('resize', () => { if (img) redraw(); });
+redraw();
+</script>
+</body>
+</html>
