@@ -33,6 +33,7 @@
   .btn:hover { border-color:var(--accent); color:var(--accent); }
   .btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   .btn-primary:hover { background:var(--accent-hover); border-color:var(--accent-hover); color:#fff; }
+  .btn-accent-active { background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:0 0 8px rgba(108,126,225,.4); }
   .btn-danger { border-color:var(--danger); color:var(--danger); }
   .btn-danger:hover { background:var(--danger); color:#fff; }
   .btn-sm { padding:5px 10px; font-size:12px; }
@@ -49,7 +50,8 @@
   .canvas-area { flex:1; display:flex; flex-direction:column; overflow:hidden; }
   .toolbar { padding:7px 16px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .toolbar .sep { width:1px; height:22px; background:var(--border); }
-  .canvas-wrapper { flex:1; overflow:auto; display:flex; align-items:center; justify-content:center; padding:24px; position:relative; }
+  .canvas-wrapper { flex:1; overflow:auto; position:relative; }
+  .canvas-wrapper-padded { padding:24px; min-height:100%; display:flex; align-items:center; justify-content:center; }
   .canvas-container { position:relative; display:inline-block; line-height:0; }
   #mainCanvas { display:block; border-radius:4px; cursor:crosshair; }
   .selection-overlay { position:absolute; pointer-events:none; z-index:10; display:none; }
@@ -186,10 +188,11 @@
       <div class="toggle-group">
         <button class="toggle-btn active" data-place="outside" onclick="setPlacement('outside')">原图外</button>
         <button class="toggle-btn" data-place="inside" onclick="setPlacement('inside')">原图内</button>
+        <button class="toggle-btn" data-place="splice" onclick="setPlacement('splice')">拼接</button>
       </div>
       <div id="outsideOptions">
         <label>放置方向</label>
-        <select id="outsideDir" onchange="redraw()">
+        <select id="outsideDir" onchange="resetOutsideCustom()">
           <option value="right">右侧 →</option>
           <option value="left">← 左侧</option>
           <option value="top">↑ 上方</option>
@@ -200,7 +203,26 @@
           <option value="bottom-left">↙ 左下</option>
         </select>
         <label>与原图间距 (px)</label>
-        <input type="number" id="outsideGap" value="30" min="5" max="200">
+        <input type="number" id="outsideGap" value="30" min="5" max="200" onchange="resetOutsideCustom()">
+        <div style="margin-top:6px">
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+            <input type="checkbox" id="outsideUseCustomPos" onchange="toggleOutsideCustomPos()">
+            自定义位置（覆盖方向）
+          </label>
+        </div>
+        <div id="outsideCustomPosPanel" class="hidden">
+          <p class="tip" style="margin-top:4px">放大图左上角坐标（可拖动放大图微调）</p>
+          <div class="row" style="margin-top:4px">
+            <div>
+              <label>X (px)</label>
+              <input type="number" id="outsideCustomX" value="0" onchange="applyOutsideCustomPos()">
+            </div>
+            <div>
+              <label>Y (px)</label>
+              <input type="number" id="outsideCustomY" value="0" onchange="applyOutsideCustomPos()">
+            </div>
+          </div>
+        </div>
       </div>
       <div id="insideOptions" class="hidden">
         <label>位置</label>
@@ -213,9 +235,17 @@
           <option value="custom">自定义拖动</option>
         </select>
       </div>
+      <div id="spliceOptions" class="hidden">
+        <label>拼接方向</label>
+        <select id="spliceDir" onchange="redraw()">
+          <option value="right">右侧 →</option>
+          <option value="left">← 左侧</option>
+          <option value="top">↑ 上方</option>
+          <option value="bottom">↓ 下方</option>
+        </select>
+        <p class="tip" style="margin-top:4px">放大图紧贴原图边缘，仅可拖动选取框调整</p>
+      </div>
     </div>
-
-    <!-- Colors & Lines -->
     <div class="panel">
       <div class="panel-title"><span class="icon">🎨</span> 边框与连线</div>
 
@@ -264,6 +294,9 @@
   <!-- Canvas -->
   <div class="canvas-area">
     <div class="toolbar">
+      <button class="btn btn-sm" id="btnToolDrag" onclick="setTool('drag')" title="拖动模式：仅拖动已有框体，不创建新选取">✋ 拖动</button>
+      <button class="btn btn-sm btn-primary" id="btnToolSelect" onclick="setTool('select')" title="选取模式：拖动创建新选取区域">⬚ 选取</button>
+      <div class="sep"></div>
       <button class="btn btn-sm btn-primary" id="btnAdd" onclick="confirmSelection()" disabled>✓ 确认选取</button>
       <button class="btn btn-sm" id="btnCancel" onclick="cancelSelection()" disabled>✕ 取消</button>
       <div class="sep"></div>
@@ -274,16 +307,18 @@
       <span style="font-size:12px;color:var(--text-dim)" id="coordDisplay">坐标: -</span>
     </div>
     <div class="canvas-wrapper" id="canvasWrapper">
-      <div id="uploadState" class="drop-zone" style="max-width:400px" onclick="document.getElementById('fileInput').click()">
-        <div class="icon">🖼️</div>
-        <p>请先上传一张图片</p>
-        <div class="hint">支持 PNG / JPG / SVG / WebP</div>
-      </div>
-      <div id="workState" class="hidden">
-        <div class="canvas-container" id="canvasContainer">
-          <canvas id="mainCanvas"></canvas>
-          <svg class="lines-overlay" id="linesOverlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:15;"></svg>
-          <canvas id="selOverlay" class="selection-overlay" style="position:absolute;top:0;left:0;pointer-events:none;z-index:10;"></canvas>
+      <div class="canvas-wrapper-padded" id="canvasWrapperInner">
+        <div id="uploadState" class="drop-zone" style="max-width:400px" onclick="document.getElementById('fileInput').click()">
+          <div class="icon">🖼️</div>
+          <p>请先上传一张图片</p>
+          <div class="hint">支持 PNG / JPG / SVG / WebP</div>
+        </div>
+        <div id="workState" class="hidden">
+          <div class="canvas-container" id="canvasContainer">
+            <canvas id="mainCanvas"></canvas>
+            <svg class="lines-overlay" id="linesOverlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:15;"></svg>
+            <canvas id="selOverlay" class="selection-overlay" style="position:absolute;top:0;left:0;pointer-events:none;z-index:10;"></canvas>
+          </div>
         </div>
       </div>
     </div>
@@ -314,11 +349,12 @@ let img = null, imgW = 0, imgH = 0, scale = 1;
 let mode = 'free';      // free | fixed
 let shape = 'rect';     // rect | roundrect | ellipse | circle
 let placement = 'outside';
+let tool = 'select';    // select | drag
 let selection = null;   // {x,y,w,h} in image coords (currently-being-drawn)
 let insets = [];
 let curOx = 0, curOy = 0, curDs = 1; // current draw offset & scale after redraw
 
-// Drag state machine: dragType = null | 'new' | 'sel' | 'inset'
+// Drag state machine: dragType = null | 'new' | 'sel' | 'inset' | 'selection'
 let dragType = null, dragTarget = null, dragStart = null, dragOff = {x:0,y:0};
 
 // None-state for colors
@@ -406,7 +442,8 @@ function setMode(m) {
 
 function updateStatusMode() {
   const shapeNames = { rect:'矩形', roundrect:'圆角矩形', ellipse:'椭圆', circle:'圆形' };
-  document.getElementById('statusMode').textContent = `模式: ${mode === 'free' ? '自由选取' : '固定大小'} · ${shapeNames[shape]}`;
+  const toolName = tool === 'drag' ? '拖动' : '选取';
+  document.getElementById('statusMode').textContent = `工具: ${toolName} · 模式: ${mode === 'free' ? '自由选取' : '固定大小'} · ${shapeNames[shape]}`;
 }
 
 function setPlacement(p) {
@@ -414,7 +451,57 @@ function setPlacement(p) {
   document.querySelectorAll('[data-place]').forEach(b => b.classList.toggle('active', b.dataset.place === p));
   document.getElementById('outsideOptions').classList.toggle('hidden', p !== 'outside');
   document.getElementById('insideOptions').classList.toggle('hidden', p !== 'inside');
+  document.getElementById('spliceOptions').classList.toggle('hidden', p !== 'splice');
   redraw();
+}
+
+function setTool(t) {
+  tool = t;
+  document.getElementById('btnToolDrag').classList.toggle('btn-primary', t === 'drag');
+  document.getElementById('btnToolDrag').classList.toggle('btn-accent-active', t === 'drag');
+  document.getElementById('btnToolSelect').classList.toggle('btn-primary', t === 'select');
+  canvas.style.cursor = t === 'drag' ? 'grab' : 'crosshair';
+  updateStatusMode();
+}
+
+function resetOutsideCustom() {
+  // When user changes outside direction, reset custom positioning so auto-pos takes effect
+  for (const ins of insets) {
+    if (ins.placement === 'outside') ins.customOutside = false;
+  }
+  redraw();
+}
+
+function toggleOutsideCustomPos() {
+  const on = document.getElementById('outsideUseCustomPos').checked;
+  document.getElementById('outsideCustomPosPanel').classList.toggle('hidden', !on);
+  if (on) {
+    // Initialize with current auto-computed position of last inset
+    if (insets.length > 0) {
+      const lastIns = insets[insets.length - 1];
+      if (lastIns.placement === 'outside') {
+        const pos = computeOutsidePos(lastIns);
+        document.getElementById('outsideCustomX').value = Math.round(pos.insetX);
+        document.getElementById('outsideCustomY').value = Math.round(pos.insetY);
+      }
+    }
+  }
+}
+
+function applyOutsideCustomPos() {
+  if (insets.length === 0) return;
+  const cx = parseInt(document.getElementById('outsideCustomX').value) || 0;
+  const cy = parseInt(document.getElementById('outsideCustomY').value) || 0;
+  // Apply to the last outside-placed inset
+  for (let i = insets.length - 1; i >= 0; i--) {
+    if (insets[i].placement === 'outside') {
+      insets[i].insetX = cx;
+      insets[i].insetY = cy;
+      insets[i].customOutside = true;
+      redraw();
+      break;
+    }
+  }
 }
 
 function updateZoomLabel() {
@@ -443,10 +530,11 @@ function hitTestSel(mx, my) {
 
 // ─── Hit test: inset box (in image coords) ───
 function hitTestInset(mx, my) {
+  const tol = 4 / (curDs || 1); // tolerance in image coords, scales with zoom
   for (let i = insets.length - 1; i >= 0; i--) {
     const ins = insets[i];
     const iw = ins.sel.w * ins.zoom, ih = ins.sel.h * ins.zoom;
-    if (mx >= ins.insetX && mx <= ins.insetX + iw && my >= ins.insetY && my <= ins.insetY + ih) {
+    if (mx >= ins.insetX - tol && mx <= ins.insetX + iw + tol && my >= ins.insetY - tol && my <= ins.insetY + ih + tol) {
       return ins;
     }
   }
@@ -481,17 +569,28 @@ canvas.addEventListener('mousedown', e => {
   const my = (e.clientY - rect.top) / curDs - curOy;
 
   // 1) Hit test: existing inset box (topmost first)
+  // Skip splice-placed insets — they are fixed, only selection box is draggable
   const hitI = hitTestInset(mx, my);
-  if (hitI) {
+  if (hitI && hitI.placement !== 'splice') {
     dragType = 'inset';
     dragTarget = hitI;
     dragOff = { x: mx - hitI.insetX, y: my - hitI.insetY };
     hitI.insidePos = 'custom'; // lock so redraw won't overwrite
+    if (hitI.placement === 'outside') hitI.customOutside = true;
     canvas.style.cursor = 'grabbing';
     return;
   }
 
-  // 2) Hit test: existing selection box
+  // 2) Hit test: current selection box (for dragging in fixed mode)
+  if (selection && mx >= selection.x && mx <= selection.x + selection.w && my >= selection.y && my <= selection.y + selection.h) {
+    dragType = 'selection';
+    dragTarget = selection;
+    dragOff = { x: mx - selection.x, y: my - selection.y };
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  // 3) Hit test: confirmed inset selection box (for dragging)
   const hitS = hitTestSel(mx, my);
   if (hitS) {
     dragType = 'sel';
@@ -501,7 +600,8 @@ canvas.addEventListener('mousedown', e => {
     return;
   }
 
-  // 3) No hit — start new selection
+  // 4) No hit — start new selection (only in select tool mode)
+  if (tool === 'drag') return; // drag mode: don't create new selections
   if (mode === 'fixed') {
     if (document.getElementById('fixedUsePos').checked) {
       // Use relative position
@@ -532,13 +632,27 @@ canvas.addEventListener('mousemove', e => {
   if (dragType === 'inset' && dragTarget) {
     const ins = dragTarget;
     const iw = ins.sel.w * ins.zoom, ih = ins.sel.h * ins.zoom;
-    ins.insetX = Math.max(-iw * 0.3, Math.min(mx - dragOff.x, imgW - iw * 0.7));
-    ins.insetY = Math.max(-ih * 0.3, Math.min(my - dragOff.y, imgH - ih * 0.7));
+    ins.insetX = mx - dragOff.x;
+    ins.insetY = my - dragOff.y;
+    // Sync outside custom pos inputs if applicable
+    if (ins.placement === 'outside' && document.getElementById('outsideUseCustomPos').checked) {
+      document.getElementById('outsideCustomX').value = Math.round(ins.insetX);
+      document.getElementById('outsideCustomY').value = Math.round(ins.insetY);
+    }
     redraw();
     return;
   }
 
-  // ── Dragging a selection box ──
+  // ── Dragging the current selection box ──
+  if (dragType === 'selection' && dragTarget) {
+    const s = dragTarget;
+    s.x = Math.max(0, Math.min(mx - dragOff.x, imgW - s.w));
+    s.y = Math.max(0, Math.min(my - dragOff.y, imgH - s.h));
+    showSelection();
+    return;
+  }
+
+  // ── Dragging a confirmed selection box ──
   if (dragType === 'sel' && dragTarget) {
     const s = dragTarget.sel;
     s.x = Math.max(0, Math.min(mx - dragOff.x, imgW - s.w));
@@ -560,9 +674,11 @@ canvas.addEventListener('mousemove', e => {
 
   // ── Hover cursor ──
   if (!dragType) {
-    if (hitTestInset(mx, my)) canvas.style.cursor = 'grab';
-    else if (hitTestSel(mx, my)) canvas.style.cursor = 'grab';
-    else canvas.style.cursor = 'crosshair';
+    const hitI_hover = hitTestInset(mx, my);
+    const hitDraggableInset = hitI_hover && hitI_hover.placement !== 'splice';
+    const hitSomething = hitDraggableInset || (selection && mx >= selection.x && mx <= selection.x + selection.w && my >= selection.y && my <= selection.y + selection.h) || hitTestSel(mx, my);
+    if (hitSomething) canvas.style.cursor = 'grab';
+    else canvas.style.cursor = tool === 'drag' ? 'grab' : 'crosshair';
   }
 });
 
@@ -668,11 +784,19 @@ function confirmSelection() {
     placement: placement,
     outsideDir: document.getElementById('outsideDir').value,
     outsideGap: parseInt(document.getElementById('outsideGap').value) || 30,
+    customOutside: false,
     insidePos: document.getElementById('insidePos').value,
+    spliceDir: document.getElementById('spliceDir').value,
     cornerRadius: parseFloat(document.getElementById('cornerRadius').value) || 8,
     insetX: 0, insetY: 0,
     color: `hsl(${(insets.length * 67 + 200) % 360}, 60%, 60%)`
   };
+  // Apply custom outside position if checkbox is checked
+  if (placement === 'outside' && document.getElementById('outsideUseCustomPos').checked) {
+    inset.customOutside = true;
+    inset.insetX = parseInt(document.getElementById('outsideCustomX').value) || 0;
+    inset.insetY = parseInt(document.getElementById('outsideCustomY').value) || 0;
+  }
   insets.push(inset);
   cancelSelection();
   updateInsetList();
@@ -739,6 +863,19 @@ function computeOutsidePos(ins) {
   else if (dir === 'top-left')     { pos.insetX = -g - iw; pos.insetY = -g - ih; }
   else if (dir === 'bottom-right') { pos.insetX = imgW + g; pos.insetY = imgH + g; }
   else if (dir === 'bottom-left')  { pos.insetX = -g - iw; pos.insetY = imgH + g; }
+  return pos;
+}
+
+// ─── Compute splice position (flush against original image edge, no gap) ───
+function computeSplicePos(ins) {
+  const iw = ins.sel.w * ins.zoom, ih = ins.sel.h * ins.zoom;
+  const dir = ins.spliceDir || 'right';
+  const scx = ins.sel.x + ins.sel.w / 2, scy = ins.sel.y + ins.sel.h / 2;
+  const pos = { insetX: 0, insetY: 0 };
+  if (dir === 'right')       { pos.insetX = imgW; pos.insetY = Math.max(0, Math.min(scy - ih/2, imgH - ih)); }
+  else if (dir === 'left')   { pos.insetX = -iw; pos.insetY = Math.max(0, Math.min(scy - ih/2, imgH - ih)); }
+  else if (dir === 'top')    { pos.insetX = Math.max(0, Math.min(scx - iw/2, imgW - iw)); pos.insetY = -ih; }
+  else if (dir === 'bottom') { pos.insetX = Math.max(0, Math.min(scx - iw/2, imgW - iw)); pos.insetY = imgH; }
   return pos;
 }
 
@@ -833,13 +970,21 @@ function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 function redraw() {
   if (!img) return;
 
-  // Compute positions (outside or inside)
+  // Compute positions (outside, inside, or splice)
   const computed = insets.map(ins => {
     const ci = { ...ins };
-    if (ins.placement === 'outside') {
+    if (ins.placement === 'splice') {
+      const pos = computeSplicePos(ins);
+      ci.insetX = pos.insetX;
+      ci.insetY = pos.insetY;
+    } else if (ins.placement === 'outside' && !ins.customOutside) {
       const pos = computeOutsidePos(ins);
       ci.insetX = pos.insetX;
       ci.insetY = pos.insetY;
+    } else if (ins.placement === 'outside' && ins.customOutside) {
+      // Keep the dragged position for outside placement
+      ci.insetX = ins.insetX;
+      ci.insetY = ins.insetY;
     } else if (ins.insidePos === 'custom') {
       // Keep the dragged position
       ci.insetX = ins.insetX;
@@ -989,10 +1134,17 @@ function exportImage() {
 
   const computed = insets.map(ins => {
     const ci = { ...ins };
-    if (ins.placement === 'outside') {
+    if (ins.placement === 'splice') {
+      const p = computeSplicePos(ins);
+      ci.insetX = p.insetX;
+      ci.insetY = p.insetY;
+    } else if (ins.placement === 'outside' && !ins.customOutside) {
       const p = computeOutsidePos(ins);
       ci.insetX = p.insetX;
       ci.insetY = p.insetY;
+    } else if (ins.placement === 'outside' && ins.customOutside) {
+      ci.insetX = ins.insetX;
+      ci.insetY = ins.insetY;
     } else if (ins.insidePos === 'custom') {
       // Keep the dragged position
       ci.insetX = ins.insetX;
