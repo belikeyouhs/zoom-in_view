@@ -21,6 +21,12 @@
   .panel { background:var(--surface2); border-radius:10px; padding:12px 14px; border:1px solid var(--border); }
   .panel-title { font-size:12px; font-weight:600; color:var(--text-dim); text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px; display:flex; align-items:center; gap:5px; }
   .panel-title .icon { font-size:14px; }
+  .panel-title.collapsible { cursor:pointer; margin-bottom:10px; user-select:none; }
+  .panel-title.collapsible .arrow { margin-left:auto; font-size:10px; transition:transform .2s; }
+  .panel-title.collapsible.expanded .arrow { transform:rotate(90deg); }
+  .panel-title.collapsible.expanded { margin-bottom:10px; }
+  .panel-body { display:none; }
+  .panel-body.expanded { display:block; }
   label { display:block; font-size:12px; color:var(--text-dim); margin-bottom:3px; margin-top:8px; }
   label:first-child { margin-top:0; }
   input[type="number"], input[type="text"], select { width:100%; padding:6px 9px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; outline:none; transition:border-color .2s; }
@@ -172,114 +178,123 @@
 
     <!-- Zoom -->
     <div class="panel">
-      <div class="panel-title"><span class="icon">🔍</span> 放大设置</div>
-      <label>放大倍数</label>
-      <div class="row row-narrow">
-        <input type="range" id="zoomLevel" min="1.5" max="10" step="0.5" value="3" oninput="updateZoomLabel()">
-        <span id="zoomLabel" style="font-size:13px;min-width:36px;text-align:right">3×</span>
+      <div class="panel-title collapsible" onclick="togglePanel(this)"><span class="icon">🔍</span> 放大设置 <span class="arrow">▶</span></div>
+      <div class="panel-body">
+        <label>放大倍数</label>
+        <div class="row row-narrow">
+          <input type="range" id="zoomLevel" min="1.5" max="10" step="0.5" value="3" oninput="updateZoomLabel()">
+          <span id="zoomLabel" style="font-size:13px;min-width:36px;text-align:right">3×</span>
+        </div>
+        <label>圆角半径 (仅圆角矩形)</label>
+        <input type="number" id="cornerRadius" value="8" min="0" max="100" step="1">
       </div>
-      <label>圆角半径 (仅圆角矩形)</label>
-      <input type="number" id="cornerRadius" value="8" min="0" max="100" step="1">
     </div>
 
     <!-- Placement -->
     <div class="panel">
-      <div class="panel-title"><span class="icon">📌</span> 放置方式</div>
-      <div class="toggle-group">
-        <button class="toggle-btn active" data-place="outside" onclick="setPlacement('outside')">原图外</button>
-        <button class="toggle-btn" data-place="inside" onclick="setPlacement('inside')">原图内</button>
-        <button class="toggle-btn" data-place="splice" onclick="setPlacement('splice')">拼接</button>
-      </div>
-      <div id="outsideOptions">
-        <label>放置方向</label>
-        <select id="outsideDir" onchange="resetOutsideCustom()">
-          <option value="right">右侧 →</option>
-          <option value="left">← 左侧</option>
-          <option value="top">↑ 上方</option>
-          <option value="bottom">↓ 下方</option>
-          <option value="top-right">↗ 右上</option>
-          <option value="top-left">↖ 左上</option>
-          <option value="bottom-right">↘ 右下</option>
-          <option value="bottom-left">↙ 左下</option>
-        </select>
-        <label>与原图间距 (px)</label>
-        <input type="number" id="outsideGap" value="30" min="5" max="200" onchange="resetOutsideCustom()">
-        <div style="margin-top:6px">
-          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
-            <input type="checkbox" id="outsideUseCustomPos" onchange="toggleOutsideCustomPos()">
-            自定义位置（覆盖方向）
-          </label>
+      <div class="panel-title collapsible" onclick="togglePanel(this)"><span class="icon">📌</span> 放置方式 <span class="arrow">▶</span></div>
+      <div class="panel-body">
+        <div class="toggle-group">
+          <button class="toggle-btn active" data-place="outside" onclick="setPlacement('outside')">原图外</button>
+          <button class="toggle-btn" data-place="inside" onclick="setPlacement('inside')">原图内</button>
+          <button class="toggle-btn" data-place="splice" onclick="setPlacement('splice')">拼接</button>
         </div>
-        <div id="outsideCustomPosPanel" class="hidden">
-          <p class="tip" style="margin-top:4px">放大图左上角坐标（可拖动放大图微调）</p>
-          <div class="row" style="margin-top:4px">
-            <div>
-              <label>X (px)</label>
-              <input type="number" id="outsideCustomX" value="0" onchange="applyOutsideCustomPos()">
-            </div>
-            <div>
-              <label>Y (px)</label>
-              <input type="number" id="outsideCustomY" value="0" onchange="applyOutsideCustomPos()">
+        <div id="outsideOptions">
+          <label>放置方向</label>
+          <select id="outsideDir" onchange="resetOutsideCustom()">
+            <option value="right">右侧 →</option>
+            <option value="left">← 左侧</option>
+            <option value="top">↑ 上方</option>
+            <option value="bottom">↓ 下方</option>
+            <option value="top-right">↗ 右上</option>
+            <option value="top-left">↖ 左上</option>
+            <option value="bottom-right">↘ 右下</option>
+            <option value="bottom-left">↙ 左下</option>
+          </select>
+          <label>与原图间距 (px)</label>
+          <input type="number" id="outsideGap" value="30" min="5" max="200" onchange="resetOutsideCustom()">
+          <div style="margin-top:6px">
+            <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+              <input type="checkbox" id="outsideUseCustomPos" onchange="toggleOutsideCustomPos()">
+              自定义位置（覆盖方向）
+            </label>
+          </div>
+          <div id="outsideCustomPosPanel" class="hidden">
+            <p class="tip" style="margin-top:4px">放大图左上角坐标（可拖动放大图微调）</p>
+            <div class="row" style="margin-top:4px">
+              <div>
+                <label>X (px)</label>
+                <input type="number" id="outsideCustomX" value="0" onchange="applyOutsideCustomPos()">
+              </div>
+              <div>
+                <label>Y (px)</label>
+                <input type="number" id="outsideCustomY" value="0" onchange="applyOutsideCustomPos()">
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div id="insideOptions" class="hidden">
-        <label>位置</label>
-        <select id="insidePos" onchange="redraw()">
-          <option value="top-left">左上</option>
-          <option value="top-right">右上</option>
-          <option value="bottom-left">左下</option>
-          <option value="bottom-right" selected>右下</option>
-          <option value="center">居中</option>
-          <option value="custom">自定义拖动</option>
-        </select>
-      </div>
-      <div id="spliceOptions" class="hidden">
-        <label>拼接方向</label>
-        <select id="spliceDir" onchange="redraw()">
-          <option value="right">右侧 →</option>
-          <option value="left">← 左侧</option>
-          <option value="top">↑ 上方</option>
-          <option value="bottom">↓ 下方</option>
-        </select>
-        <p class="tip" style="margin-top:4px">放大图紧贴原图边缘，仅可拖动选取框调整</p>
+        <div id="insideOptions" class="hidden">
+          <label>位置</label>
+          <select id="insidePos" onchange="redraw()">
+            <option value="top-left">左上</option>
+            <option value="top-right">右上</option>
+            <option value="bottom-left">左下</option>
+            <option value="bottom-right" selected>右下</option>
+            <option value="center">居中</option>
+            <option value="custom">自定义拖动</option>
+          </select>
+        </div>
+        <div id="spliceOptions" class="hidden">
+          <label>拼接方向</label>
+          <select id="spliceDir" onchange="redraw()">
+            <option value="right">右侧 →</option>
+            <option value="left">← 左侧</option>
+            <option value="top">↑ 上方</option>
+            <option value="bottom">↓ 下方</option>
+          </select>
+          <p class="tip" style="margin-top:4px">放大图紧贴原图边缘，仅可拖动选取框调整</p>
+        </div>
       </div>
     </div>
     <div class="panel">
-      <div class="panel-title"><span class="icon">🎨</span> 边框与连线</div>
+      <div class="panel-title collapsible" onclick="togglePanel(this)"><span class="icon">🎨</span> 边框与连线 <span class="arrow">▶</span></div>
+      <div class="panel-body">
 
-      <label>选取框边框</label>
-      <div class="color-row">
-        <input type="color" id="selBorderColor" value="#6c7ee1" onchange="redraw()">
-        <span>选取框颜色</span>
-        <button class="none-btn" id="selBorderNone" onclick="toggleNone('selBorder')">无</button>
-      </div>
+        <label>选取框边框</label>
+        <div class="color-row">
+          <input type="color" id="selBorderColor" value="#6c7ee1" onchange="redraw()">
+          <span>选取框颜色</span>
+          <button class="none-btn" id="selBorderNone" onclick="toggleNone('selBorder')">无</button>
+        </div>
 
-      <label style="margin-top:6px">放大图边框</label>
-      <div class="color-row">
-        <input type="color" id="insetBorderColor" value="#6c7ee1" onchange="redraw()">
-        <span>放大图颜色</span>
-        <button class="none-btn" id="insetBorderNone" onclick="toggleNone('insetBorder')">无</button>
-      </div>
-      <label>边框粗细</label>
-      <input type="number" id="borderWidth" value="2" min="0.5" max="8" step="0.5">
+        <label>选取框粗细</label>
+        <input type="number" id="selBorderWidth" value="1.5" min="0.5" max="8" step="0.5">
 
-      <div style="border-top:1px solid var(--border); margin:10px 0 6px;"></div>
+        <label style="margin-top:6px">放大图边框</label>
+        <div class="color-row">
+          <input type="color" id="insetBorderColor" value="#6c7ee1" onchange="redraw()">
+          <span>放大图颜色</span>
+          <button class="none-btn" id="insetBorderNone" onclick="toggleNone('insetBorder')">无</button>
+        </div>
+        <label>边框粗细</label>
+        <input type="number" id="borderWidth" value="2" min="0.5" max="8" step="0.5">
 
-      <label>连接线</label>
-      <div class="color-row">
-        <input type="color" id="lineColor" value="#ff0000" onchange="redraw()">
-        <span>连线颜色</span>
-        <button class="none-btn" id="lineNone" onclick="toggleNone('line')">无</button>
-      </div>
-      <label>线宽</label>
-      <input type="number" id="lineWidth" value="1.5" min="0.5" max="5" step="0.5">
-      <div style="margin-top:6px">
-        <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
-          <input type="checkbox" id="showLines" checked onchange="redraw()">
-          显示连接线
-        </label>
+        <div style="border-top:1px solid var(--border); margin:10px 0 6px;"></div>
+
+        <label>连接线</label>
+        <div class="color-row">
+          <input type="color" id="lineColor" value="#ff0000" onchange="redraw()">
+          <span>连线颜色</span>
+          <button class="none-btn" id="lineNone" onclick="toggleNone('line')">无</button>
+        </div>
+        <label>线宽</label>
+        <input type="number" id="lineWidth" value="1.5" min="0.5" max="5" step="0.5">
+        <div style="margin-top:6px">
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+            <input type="checkbox" id="showLines" checked onchange="redraw()">
+            显示连接线
+          </label>
+        </div>
       </div>
     </div>
 
@@ -316,7 +331,6 @@
         <div id="workState" class="hidden">
           <div class="canvas-container" id="canvasContainer">
             <canvas id="mainCanvas"></canvas>
-            <svg class="lines-overlay" id="linesOverlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:15;"></svg>
             <canvas id="selOverlay" class="selection-overlay" style="position:absolute;top:0;left:0;pointer-events:none;z-index:10;"></canvas>
           </div>
         </div>
@@ -422,6 +436,13 @@ function setupCanvas() {
   selOverlay.width = dw; selOverlay.height = dh;
   selOverlay.style.width = dw + 'px'; selOverlay.style.height = dh + 'px';
   redraw();
+}
+
+// ─── Panel collapse/expand ───
+function togglePanel(titleEl) {
+  titleEl.classList.toggle('expanded');
+  const body = titleEl.nextElementSibling;
+  body.classList.toggle('expanded');
 }
 
 // ─── Mode / Shape / Placement ───
@@ -534,11 +555,27 @@ function hitTestInset(mx, my) {
   for (let i = insets.length - 1; i >= 0; i--) {
     const ins = insets[i];
     const iw = ins.sel.w * ins.zoom, ih = ins.sel.h * ins.zoom;
-    if (mx >= ins.insetX - tol && mx <= ins.insetX + iw + tol && my >= ins.insetY - tol && my <= ins.insetY + ih + tol) {
+    const pos = getComputedInsetPos(ins);
+    if (mx >= pos.x - tol && mx <= pos.x + iw + tol && my >= pos.y - tol && my <= pos.y + ih + tol) {
       return ins;
     }
   }
   return null;
+}
+
+function getComputedInsetPos(ins) {
+  if (ins.placement === 'splice') {
+    const p = computeSplicePos(ins);
+    return { x: p.insetX, y: p.insetY };
+  } else if (ins.placement === 'outside' && !ins.customOutside) {
+    const p = computeOutsidePos(ins);
+    return { x: p.insetX, y: p.insetY };
+  } else if (ins.insidePos !== 'custom' && ins.placement === 'inside') {
+    const iw = ins.sel.w * ins.zoom, ih = ins.sel.h * ins.zoom;
+    const p = computeInsidePos(ins.insidePos, iw, ih, 0, ins);
+    return { x: p.insetX, y: p.insetY };
+  }
+  return { x: ins.insetX, y: ins.insetY };
 }
 
 // ─── Toggle fixed-size relative position panel ───
@@ -551,8 +588,8 @@ function toggleFixedPos() {
 // ─── Apply fixed-size relative position ───
 function applyFixedPos() {
   if (!img || !document.getElementById('fixedUsePos').checked) return;
-  const fw = parseInt(document.getElementById('fixedW').value) || 100;
-  const fh = parseInt(document.getElementById('fixedH').value) || 100;
+  const fw = parseInt(document.getElementById('fixedW').value) || 10;
+  const fh = parseInt(document.getElementById('fixedH').value) || 10;
   const x = Math.max(0, Math.min(parseInt(document.getElementById('fixedPosX').value) || 0, imgW - fw));
   const y = Math.max(0, Math.min(parseInt(document.getElementById('fixedPosY').value) || 0, imgH - fh));
   selection = { x, y, w: fw, h: fh };
@@ -574,7 +611,10 @@ canvas.addEventListener('mousedown', e => {
   if (hitI && hitI.placement !== 'splice') {
     dragType = 'inset';
     dragTarget = hitI;
-    dragOff = { x: mx - hitI.insetX, y: my - hitI.insetY };
+    const hitPos = getComputedInsetPos(hitI);
+    dragOff = { x: mx - hitPos.x, y: my - hitPos.y };
+    hitI.insetX = hitPos.x;
+    hitI.insetY = hitPos.y;
     hitI.insidePos = 'custom'; // lock so redraw won't overwrite
     if (hitI.placement === 'outside') hitI.customOutside = true;
     canvas.style.cursor = 'grabbing';
@@ -608,8 +648,8 @@ canvas.addEventListener('mousedown', e => {
       applyFixedPos();
       return;
     }
-    const fw = parseInt(document.getElementById('fixedW').value) || 100;
-    const fh = parseInt(document.getElementById('fixedH').value) || 100;
+    const fw = parseInt(document.getElementById('fixedW').value) || 10;
+    const fh = parseInt(document.getElementById('fixedH').value) || 10;
     selection = { x: Math.max(0, Math.min(mx - fw/2, imgW - fw)), y: Math.max(0, Math.min(my - fh/2, imgH - fh)), w: fw, h: fh };
     showSelection();
     document.getElementById('btnAdd').disabled = false;
@@ -690,12 +730,13 @@ canvas.addEventListener('mouseup', () => {
   dragType = null;
   dragTarget = null;
   dragStart = null;
-  canvas.style.cursor = 'crosshair';
+  canvas.style.cursor = tool === 'drag' ? 'grab' : 'crosshair';
 });
 canvas.addEventListener('mouseleave', () => {
   dragType = null;
   dragTarget = null;
   dragStart = null;
+  canvas.style.cursor = tool === 'drag' ? 'grab' : 'crosshair';
 });
 
 function showSelection() {
@@ -710,8 +751,9 @@ function showSelection() {
   drawShapePath(selCtx, curOx + selection.x, curOy + selection.y, selection.w, selection.h);
 
   if (borderColor) {
+    const sw = parseFloat(document.getElementById('selBorderWidth').value) || 1.5;
     selCtx.strokeStyle = borderColor;
-    selCtx.lineWidth = 2 / curDs;
+    selCtx.lineWidth = sw / curDs;
     selCtx.setLineDash([6, 4]);
     selCtx.stroke();
     selCtx.setLineDash([]);
@@ -777,6 +819,7 @@ function confirmSelection() {
     zoom: parseFloat(document.getElementById('zoomLevel').value) || 3,
     borderWidth: parseFloat(document.getElementById('borderWidth').value) || 2,
     selBorderColor: selBorderNone ? null : document.getElementById('selBorderColor').value,
+    selBorderWidth: parseFloat(document.getElementById('selBorderWidth').value) || 1.5,
     insetBorderColor: insetBorderNone ? null : document.getElementById('insetBorderColor').value,
     lineColor: lineNone ? null : document.getElementById('lineColor').value,
     lineWidth: parseFloat(document.getElementById('lineWidth').value) || 1.5,
@@ -991,8 +1034,7 @@ function redraw() {
       ci.insetY = ins.insetY;
     } else {
       const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
-      const g = 20;
-      const pos = computeInsidePos(ci.insidePos, iw, ih, g, ci);
+      const pos = computeInsidePos(ci.insidePos, iw, ih, 0, ci);
       ci.insetX = pos.insetX;
       ci.insetY = pos.insetY;
     }
@@ -1039,11 +1081,11 @@ function redraw() {
     if (ci.selBorderColor) {
       ctx.save();
       ctx.strokeStyle = ci.selBorderColor;
-      ctx.lineWidth = 1.5 / ds;
+      ctx.lineWidth = (ci.selBorderWidth || 1.5) / ds;
       ctx.setLineDash([5, 3]);
-      const prevShape = shape; shape = ci.shape;
+      const _prev = shape; shape = ci.shape;
       drawShapePath(ctx, ox + ci.sel.x, oy + ci.sel.y, ci.sel.w, ci.sel.h);
-      shape = prevShape;
+      shape = _prev;
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.restore();
@@ -1151,8 +1193,7 @@ function exportImage() {
       ci.insetY = ins.insetY;
     } else {
       const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
-      const g = 20;
-      const p = computeInsidePos(ci.insidePos, iw, ih, g, ci);
+      const p = computeInsidePos(ci.insidePos, iw, ih, 0, ci);
       ci.insetX = p.insetX;
       ci.insetY = p.insetY;
     }
@@ -1182,85 +1223,87 @@ function exportImage() {
   ex.drawImage(img, ox, oy, imgW, imgH);
 
   // For export, draw each inset using its own shape
-  for (const ci of computed) {
-    const ix = ox + ci.insetX, iy = oy + ci.insetY;
-    const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
-    const prevShape = shape;
-    shape = ci.shape;
+  const prevShape = shape;
+  try {
+    for (const ci of computed) {
+      const ix = ox + ci.insetX, iy = oy + ci.insetY;
+      const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
+      shape = ci.shape;
 
-    // Selection highlight on original
-    if (ci.selBorderColor) {
+      // Selection highlight on original
+      if (ci.selBorderColor) {
+        ex.save();
+        ex.strokeStyle = ci.selBorderColor;
+        ex.lineWidth = ci.selBorderWidth || 1.5;
+        ex.setLineDash([5, 3]);
+        drawShapePath(ex, ox + ci.sel.x, oy + ci.sel.y, ci.sel.w, ci.sel.h);
+        ex.stroke();
+        ex.setLineDash([]);
+        ex.restore();
+      }
+
+      // Clip & draw magnified content
       ex.save();
-      ex.strokeStyle = ci.selBorderColor;
-      ex.lineWidth = 1.5;
-      ex.setLineDash([5, 3]);
-      drawShapePath(ex, ox + ci.sel.x, oy + ci.sel.y, ci.sel.w, ci.sel.h);
-      ex.stroke();
-      ex.setLineDash([]);
+      clipShape(ex, ix, iy, iw, ih);
+      ex.drawImage(img, ci.sel.x, ci.sel.y, ci.sel.w, ci.sel.h, ix, iy, iw, ih);
       ex.restore();
-    }
 
-    // Clip & draw magnified content
-    ex.save();
-    clipShape(ex, ix, iy, iw, ih);
-    ex.drawImage(img, ci.sel.x, ci.sel.y, ci.sel.w, ci.sel.h, ix, iy, iw, ih);
-    ex.restore();
+      // Inset border
+      if (ci.insetBorderColor) {
+        ex.save();
+        ex.strokeStyle = ci.insetBorderColor;
+        ex.lineWidth = ci.borderWidth;
+        drawShapePath(ex, ix, iy, iw, ih);
+        ex.stroke();
+        ex.restore();
+      }
 
-    // Inset border
-    if (ci.insetBorderColor) {
-      ex.save();
-      ex.strokeStyle = ci.insetBorderColor;
-      ex.lineWidth = ci.borderWidth;
-      drawShapePath(ex, ix, iy, iw, ih);
-      ex.stroke();
-      ex.restore();
-    }
+      // Connection lines
+      if (ci.showLines && ci.lineColor) {
+        const lines = computeConnectionLines(
+          { x: ox + ci.sel.x, y: oy + ci.sel.y, w: ci.sel.w, h: ci.sel.h },
+          { x: ix, y: iy }, iw, ih
+        );
 
-    // Connection lines
-    if (ci.showLines && ci.lineColor) {
-      const lines = computeConnectionLines(
-        { x: ox + ci.sel.x, y: oy + ci.sel.y, w: ci.sel.w, h: ci.sel.h },
-        { x: ix, y: iy }, iw, ih
-      );
+        let covered = false;
+        for (const ln of lines) {
+          for (const other of computed) {
+            if (other.id === ci.id) continue;
+            const ox2 = ox + other.insetX, oy2 = oy + other.insetY;
+            const ow2 = other.sel.w * other.zoom, oh2 = other.sel.h * other.zoom;
+            if (lineIntersectsRect(ln.x1, ln.y1, ln.x2, ln.y2, ox2, oy2, ow2, oh2)) {
+              covered = true;
+              break;
+            }
+          }
+          if (covered) break;
+        }
 
-      let covered = false;
-      for (const ln of lines) {
-        for (const other of computed) {
-          if (other.id === ci.id) continue;
-          const ox2 = ox + other.insetX, oy2 = oy + other.insetY;
-          const ow2 = other.sel.w * other.zoom, oh2 = other.sel.h * other.zoom;
-          if (lineIntersectsRect(ln.x1, ln.y1, ln.x2, ln.y2, ox2, oy2, ow2, oh2)) {
-            covered = true;
-            break;
+        if (covered) {
+          ex.save();
+          const warnX = ix + iw / 2, warnY = iy - 10;
+          ex.font = 'bold 12px -apple-system, sans-serif';
+          ex.textAlign = 'center';
+          ex.textBaseline = 'bottom';
+          const tw = ex.measureText('放大图覆盖了连线').width;
+          ex.fillStyle = 'rgba(0,0,0,0.6)';
+          ex.fillRect(warnX - tw / 2 - 6, warnY - 16, tw + 12, 20);
+          ex.fillStyle = '#ff9800';
+          ex.fillText('放大图覆盖了连线', warnX, warnY);
+          ex.restore();
+        } else {
+          ex.strokeStyle = ci.lineColor;
+          ex.lineWidth = ci.lineWidth;
+          for (const ln of lines) {
+            ex.beginPath();
+            ex.moveTo(ln.x1, ln.y1);
+            ex.lineTo(ln.x2, ln.y2);
+            ex.stroke();
           }
         }
-        if (covered) break;
-      }
-
-      if (covered) {
-        ex.save();
-        const warnX = ix + iw / 2, warnY = iy - 10;
-        ex.font = 'bold 12px -apple-system, sans-serif';
-        ex.textAlign = 'center';
-        ex.textBaseline = 'bottom';
-        const tw = ex.measureText('放大图覆盖了连线').width;
-        ex.fillStyle = 'rgba(0,0,0,0.6)';
-        ex.fillRect(warnX - tw / 2 - 6, warnY - 16, tw + 12, 20);
-        ex.fillStyle = '#ff9800';
-        ex.fillText('放大图覆盖了连线', warnX, warnY);
-        ex.restore();
-      } else {
-        ex.strokeStyle = ci.lineColor;
-        ex.lineWidth = ci.lineWidth;
-        for (const ln of lines) {
-          ex.beginPath();
-          ex.moveTo(ln.x1, ln.y1);
-          ex.lineTo(ln.x2, ln.y2);
-          ex.stroke();
-        }
       }
     }
-
+  } finally {
     shape = prevShape;
   }
 
@@ -1273,7 +1316,6 @@ function exportImage() {
 function closeExportModal() { document.getElementById('exportModal').classList.add('hidden'); }
 
 window.addEventListener('resize', () => { if (img) redraw(); });
-redraw();
 </script>
 </body>
 </html>
