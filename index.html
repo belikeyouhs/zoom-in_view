@@ -87,6 +87,19 @@
   .modal h2 { font-size:16px; margin-bottom:16px; }
   .modal img { max-width:100%; border-radius:4px; }
   @media (max-width:900px) { .main-layout{flex-direction:column;} .sidebar{width:100%;min-width:unset;max-height:40vh;} }
+  .batch-actions { display:flex; gap:6px; margin-top:8px; }
+  .batch-actions .btn { flex:1; }
+  .batch-file-list { max-height:160px; overflow-y:auto; margin-top:8px; }
+  .batch-file-item { display:flex; align-items:center; gap:6px; padding:5px 8px; background:var(--bg); border-radius:5px; margin-bottom:4px; font-size:11px; cursor:pointer; border:1px solid transparent; transition:all .15s; }
+  .batch-file-item:hover { border-color:var(--accent); }
+  .batch-file-item.active { border-color:var(--accent); background:rgba(108,126,225,.15); }
+  .batch-file-item .batch-idx { color:var(--text-dim); min-width:18px; }
+  .batch-file-item .batch-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .batch-file-item .batch-status { font-size:10px; color:var(--success); }
+  .batch-nav { display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; color:var(--text-dim); }
+  .batch-nav .btn { padding:4px 10px; }
+  .batch-nav .batch-counter { flex:1; text-align:center; }
+  #batchFileInput { display:none; }
 </style>
 </head>
 <body>
@@ -109,7 +122,19 @@
         <div class="hint">支持 PNG / JPG / SVG / WebP</div>
       </div>
       <input type="file" id="fileInput" accept="image/*">
+      <input type="file" id="batchFileInput" accept="image/*" multiple>
       <div id="imageInfo" class="hidden" style="margin-top:8px;font-size:12px;color:var(--text-dim)"></div>
+      <div class="batch-actions">
+        <button class="btn btn-sm" id="batchBtn" onclick="document.getElementById('batchFileInput').click()">📂 批量上传</button>
+        <button class="btn btn-sm btn-primary hidden" id="batchExportBtn" onclick="batchExport()">📥 批量导出</button>
+        <button class="btn btn-sm btn-danger hidden" id="batchExitBtn" onclick="exitBatchMode()">退出</button>
+      </div>
+      <div id="batchNav" class="batch-nav hidden">
+        <button class="btn btn-sm" onclick="switchBatchImage(-1)">◀</button>
+        <span class="batch-counter" id="batchCounter">1 / 1</span>
+        <button class="btn btn-sm" onclick="switchBatchImage(1)">▶</button>
+      </div>
+      <div id="batchFileList" class="batch-file-list hidden"></div>
     </div>
 
     <!-- Shape -->
@@ -397,16 +422,24 @@ const selCtx = selOverlay.getContext('2d');
 // ─── File Upload ───
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
+const batchFileInput = document.getElementById('batchFileInput');
 fileInput.addEventListener('change', e => { if (e.target.files[0]) loadImage(e.target.files[0]); });
+batchFileInput.addEventListener('change', e => { if (e.target.files.length > 0) loadBatchFiles(Array.from(e.target.files)); });
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
 dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]); });
 document.getElementById('canvasWrapper').addEventListener('dragover', e => e.preventDefault());
 document.getElementById('canvasWrapper').addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]); });
 
+// ─── Batch State ───
+let batchFiles = [];
+let batchIndex = -1;
+let insetConfig = null; // saved inset config in relative coordinates
+
 function removeImage() {
   img = null; imgW = 0; imgH = 0; scale = 1;
   clearAll();
+  exitBatchMode();
   document.getElementById('workState').classList.add('hidden');
   document.getElementById('uploadState').classList.remove('hidden');
   document.getElementById('dropZone').classList.remove('hidden');
@@ -435,6 +468,300 @@ function loadImage(file) {
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+// ─── Batch Processing ───
+function loadBatchFiles(files) {
+  batchFiles = files;
+  batchIndex = 0;
+  insetConfig = null;
+  updateBatchUI();
+  loadImageAsBatch(0);
+}
+
+function loadImageAsBatch(idx) {
+  const file = batchFiles[idx];
+  const reader = new FileReader();
+  reader.onload = e => {
+    img = new Image();
+    img.onload = () => {
+      imgW = img.naturalWidth; imgH = img.naturalHeight;
+      setupCanvas();
+      document.getElementById('dropZone').classList.add('hidden');
+      document.getElementById('uploadState').classList.add('hidden');
+      document.getElementById('workState').classList.remove('hidden');
+      document.getElementById('imageInfo').classList.remove('hidden');
+      document.getElementById('imageInfo').textContent = `${file.name} — ${imgW}×${imgH}px`;
+      document.getElementById('statusSize').textContent = `图片: ${imgW}×${imgH}`;
+      document.getElementById('btnRemoveImg').style.display = '';
+      if (insetConfig) {
+        applyInsetConfig();
+      } else {
+        clearAll();
+      }
+      updateBatchActiveItem();
+      renderBatchFileList();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveInsetConfig() {
+  if (insets.length === 0) { insetConfig = null; return; }
+  insetConfig = insets.map(ins => ({
+    ...ins,
+    sel: {
+      x: ins.sel.x / imgW,
+      y: ins.sel.y / imgH,
+      w: ins.sel.w / imgW,
+      h: ins.sel.h / imgH
+    }
+  }));
+}
+
+function applyInsetConfig() {
+  if (!insetConfig) { clearAll(); return; }
+  insets = insetConfig.map(c => ({
+    ...c,
+    id: Date.now() + Math.random(),
+    sel: {
+      x: c.sel.x * imgW,
+      y: c.sel.y * imgH,
+      w: c.sel.w * imgW,
+      h: c.sel.h * imgH
+    }
+  }));
+  updateInsetList();
+  redraw();
+}
+
+function switchBatchImage(dir) {
+  if (batchFiles.length === 0) return;
+  if (insets.length > 0) saveInsetConfig();
+  batchIndex += dir;
+  if (batchIndex < 0) batchIndex = batchFiles.length - 1;
+  if (batchIndex >= batchFiles.length) batchIndex = 0;
+  loadImageAsBatch(batchIndex);
+  document.getElementById('batchCounter').textContent = `${batchIndex + 1} / ${batchFiles.length}`;
+}
+
+function updateBatchUI() {
+  const hasBatch = batchFiles.length > 0;
+  document.getElementById('batchNav').classList.toggle('hidden', !hasBatch);
+  document.getElementById('batchExportBtn').classList.toggle('hidden', !hasBatch);
+  document.getElementById('batchExitBtn').classList.toggle('hidden', !hasBatch);
+  document.getElementById('batchBtn').classList.toggle('hidden', hasBatch);
+  if (hasBatch) {
+    document.getElementById('batchCounter').textContent = `1 / ${batchFiles.length}`;
+    renderBatchFileList();
+  }
+}
+
+function renderBatchFileList() {
+  const el = document.getElementById('batchFileList');
+  el.classList.toggle('hidden', batchFiles.length === 0);
+  el.innerHTML = batchFiles.map((f, i) => `
+    <div class="batch-file-item ${i === batchIndex ? 'active' : ''}" onclick="jumpToBatchImage(${i})">
+      <span class="batch-idx">${i + 1}.</span>
+      <span class="batch-name">${f.name}</span>
+      ${i === 0 && insetConfig ? '<span class="batch-status">✓ 模板</span>' : ''}
+    </div>
+  `).join('');
+}
+
+function updateBatchActiveItem() {
+  document.querySelectorAll('.batch-file-item').forEach((el, i) => {
+    el.classList.toggle('active', i === batchIndex);
+  });
+}
+
+function jumpToBatchImage(idx) {
+  if (idx === batchIndex) return;
+  if (insets.length > 0) saveInsetConfig();
+  batchIndex = idx;
+  loadImageAsBatch(batchIndex);
+  document.getElementById('batchCounter').textContent = `${batchIndex + 1} / ${batchFiles.length}`;
+}
+
+function exitBatchMode() {
+  batchFiles = [];
+  batchIndex = -1;
+  insetConfig = null;
+  batchFileInput.value = '';
+  document.getElementById('batchFileList').innerHTML = '';
+  img = null; imgW = 0; imgH = 0; scale = 1;
+  clearAll();
+  document.getElementById('workState').classList.add('hidden');
+  document.getElementById('uploadState').classList.remove('hidden');
+  document.getElementById('dropZone').classList.remove('hidden');
+  document.getElementById('imageInfo').classList.add('hidden');
+  document.getElementById('btnRemoveImg').style.display = 'none';
+  document.getElementById('statusSize').textContent = '图片: -';
+  document.getElementById('fileInput').value = '';
+  updateBatchUI();
+}
+
+function batchExport() {
+  if (batchFiles.length === 0) { alert('请先上传批量图片'); return; }
+  if (insets.length > 0 && !insetConfig) saveInsetConfig();
+  if (!insetConfig) { alert('请先在图片上设置放大区域'); return; }
+  const mime = 'image/png';
+  const ext = '.png';
+
+  let delay = 0;
+  for (let i = 0; i < batchFiles.length; i++) {
+    const idx = i;
+    setTimeout(() => {
+      const file = batchFiles[idx];
+      const baseName = file.name.replace(/\.[^.]+$/, '');
+      const reader = new FileReader();
+      reader.onload = e => {
+        const batchImg = new Image();
+        batchImg.onload = () => {
+          const bw = batchImg.naturalWidth, bh = batchImg.naturalHeight;
+          const batchInsets = insetConfig.map(c => ({
+            ...c,
+            sel: {
+              x: c.sel.x * bw,
+              y: c.sel.y * bh,
+              w: c.sel.w * bw,
+              h: c.sel.h * bh
+            }
+          }));
+          const ec = renderExportCanvas(batchImg, bw, bh, batchInsets);
+          const a = document.createElement('a');
+          a.href = ec.toDataURL(mime, 0.92);
+          a.download = `${baseName}${ext}`;
+          a.click();
+        };
+        batchImg.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }, delay);
+    delay += 500;
+  }
+}
+
+function renderExportCanvas(srcImg, srcW, srcH, srcInsets) {
+  const computed = srcInsets.map(ins => {
+    const ci = { ...ins };
+    if (ins.placement === 'splice') {
+      const p = computeSplicePos(ins);
+      ci.insetX = p.insetX; ci.insetY = p.insetY;
+    } else if (ins.placement === 'outside' && !ins.customOutside) {
+      const p = computeOutsidePos(ins);
+      ci.insetX = p.insetX; ci.insetY = p.insetY;
+    } else if (ins.placement === 'outside' && ins.customOutside) {
+      ci.insetX = ins.insetX; ci.insetY = ins.insetY;
+    } else if (ins.insidePos === 'custom') {
+      ci.insetX = ins.insetX; ci.insetY = ins.insetY;
+    } else {
+      const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
+      const p = computeInsidePos(ci.insidePos, iw, ih, 0, ci);
+      ci.insetX = p.insetX; ci.insetY = p.insetY;
+    }
+    return ci;
+  });
+
+  let totalW = srcW, totalH = srcH, offX = 0, offY = 0;
+  for (const ci of computed) {
+    const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
+    if (ci.insetX < offX) offX = ci.insetX;
+    if (ci.insetY < offY) offY = ci.insetY;
+    if (ci.insetX + iw > totalW) totalW = ci.insetX + iw;
+    if (ci.insetY + ih > totalH) totalH = ci.insetY + ih;
+  }
+
+  const pad = 40;
+  const ox = -offX + pad, oy = -offY + pad;
+  totalW = totalW - offX + pad * 2;
+  totalH = totalH - offY + pad * 2;
+
+  const ec = document.createElement('canvas');
+  ec.width = totalW; ec.height = totalH;
+  const ex = ec.getContext('2d');
+
+  ex.fillStyle = '#ffffff';
+  ex.fillRect(0, 0, totalW, totalH);
+  ex.drawImage(srcImg, ox, oy, srcW, srcH);
+
+  const prevShape = shape;
+  try {
+    for (const ci of computed) {
+      const ix = ox + ci.insetX, iy = oy + ci.insetY;
+      const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
+      shape = ci.shape;
+
+      if (ci.selBorderColor) {
+        ex.save();
+        ex.strokeStyle = ci.selBorderColor;
+        ex.lineWidth = ci.selBorderWidth || 1.5;
+        ex.setLineDash([5, 3]);
+        drawShapePath(ex, ox + ci.sel.x, oy + ci.sel.y, ci.sel.w, ci.sel.h);
+        ex.stroke();
+        ex.setLineDash([]);
+        ex.restore();
+      }
+
+      ex.save();
+      clipShape(ex, ix, iy, iw, ih);
+      ex.drawImage(srcImg, ci.sel.x, ci.sel.y, ci.sel.w, ci.sel.h, ix, iy, iw, ih);
+      ex.restore();
+
+      if (ci.insetBorderColor) {
+        ex.save();
+        ex.strokeStyle = ci.insetBorderColor;
+        ex.lineWidth = ci.borderWidth;
+        drawShapePath(ex, ix, iy, iw, ih);
+        ex.stroke();
+        ex.restore();
+      }
+
+      if (ci.showLines && ci.lineColor) {
+        const lines = computeConnectionLines(
+          { x: ox + ci.sel.x, y: oy + ci.sel.y, w: ci.sel.w, h: ci.sel.h },
+          { x: ix, y: iy }, iw, ih
+        );
+        let covered = false;
+        for (const ln of lines) {
+          for (const other of computed) {
+            if (other.id === ci.id) continue;
+            const ox2 = ox + other.insetX, oy2 = oy + other.insetY;
+            const ow2 = other.sel.w * other.zoom, oh2 = other.sel.h * other.zoom;
+            if (lineIntersectsRect(ln.x1, ln.y1, ln.x2, ln.y2, ox2, oy2, ow2, oh2)) {
+              covered = true; break;
+            }
+          }
+          if (covered) break;
+        }
+        if (covered) {
+          ex.save();
+          const warnX = ix + iw / 2, warnY = iy - 10;
+          ex.font = 'bold 12px -apple-system, sans-serif';
+          ex.textAlign = 'center'; ex.textBaseline = 'bottom';
+          const tw = ex.measureText('放大图覆盖了连线').width;
+          ex.fillStyle = 'rgba(0,0,0,0.6)';
+          ex.fillRect(warnX - tw / 2 - 6, warnY - 16, tw + 12, 20);
+          ex.fillStyle = '#ff9800';
+          ex.fillText('放大图覆盖了连线', warnX, warnY);
+          ex.restore();
+        } else {
+          ex.strokeStyle = ci.lineColor;
+          ex.lineWidth = ci.lineWidth;
+          for (const ln of lines) {
+            ex.beginPath();
+            ex.moveTo(ln.x1, ln.y1);
+            ex.lineTo(ln.x2, ln.y2);
+            ex.stroke();
+          }
+        }
+      }
+    }
+  } finally {
+    shape = prevShape;
+  }
+  return ec;
 }
 
 function setupCanvas() {
@@ -1186,140 +1513,7 @@ function redraw() {
 function exportImage() {
   if (!img || insets.length === 0) { alert('请先上传图片并添加至少一个放大区域'); return; }
 
-  const computed = insets.map(ins => {
-    const ci = { ...ins };
-    if (ins.placement === 'splice') {
-      const p = computeSplicePos(ins);
-      ci.insetX = p.insetX;
-      ci.insetY = p.insetY;
-    } else if (ins.placement === 'outside' && !ins.customOutside) {
-      const p = computeOutsidePos(ins);
-      ci.insetX = p.insetX;
-      ci.insetY = p.insetY;
-    } else if (ins.placement === 'outside' && ins.customOutside) {
-      ci.insetX = ins.insetX;
-      ci.insetY = ins.insetY;
-    } else if (ins.insidePos === 'custom') {
-      // Keep the dragged position
-      ci.insetX = ins.insetX;
-      ci.insetY = ins.insetY;
-    } else {
-      const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
-      const p = computeInsidePos(ci.insidePos, iw, ih, 0, ci);
-      ci.insetX = p.insetX;
-      ci.insetY = p.insetY;
-    }
-    return ci;
-  });
-
-  let totalW = imgW, totalH = imgH, offX = 0, offY = 0;
-  for (const ci of computed) {
-    const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
-    if (ci.insetX < offX) offX = ci.insetX;
-    if (ci.insetY < offY) offY = ci.insetY;
-    if (ci.insetX + iw > totalW) totalW = ci.insetX + iw;
-    if (ci.insetY + ih > totalH) totalH = ci.insetY + ih;
-  }
-
-  const pad = 40;
-  const ox = -offX + pad, oy = -offY + pad;
-  totalW = totalW - offX + pad * 2;
-  totalH = totalH - offY + pad * 2;
-
-  const ec = document.createElement('canvas');
-  ec.width = totalW; ec.height = totalH;
-  const ex = ec.getContext('2d');
-
-  ex.fillStyle = '#ffffff';
-  ex.fillRect(0, 0, totalW, totalH);
-  ex.drawImage(img, ox, oy, imgW, imgH);
-
-  // For export, draw each inset using its own shape
-  const prevShape = shape;
-  try {
-    for (const ci of computed) {
-      const ix = ox + ci.insetX, iy = oy + ci.insetY;
-      const iw = ci.sel.w * ci.zoom, ih = ci.sel.h * ci.zoom;
-      shape = ci.shape;
-
-      // Selection highlight on original
-      if (ci.selBorderColor) {
-        ex.save();
-        ex.strokeStyle = ci.selBorderColor;
-        ex.lineWidth = ci.selBorderWidth || 1.5;
-        ex.setLineDash([5, 3]);
-        drawShapePath(ex, ox + ci.sel.x, oy + ci.sel.y, ci.sel.w, ci.sel.h);
-        ex.stroke();
-        ex.setLineDash([]);
-        ex.restore();
-      }
-
-      // Clip & draw magnified content
-      ex.save();
-      clipShape(ex, ix, iy, iw, ih);
-      ex.drawImage(img, ci.sel.x, ci.sel.y, ci.sel.w, ci.sel.h, ix, iy, iw, ih);
-      ex.restore();
-
-      // Inset border
-      if (ci.insetBorderColor) {
-        ex.save();
-        ex.strokeStyle = ci.insetBorderColor;
-        ex.lineWidth = ci.borderWidth;
-        drawShapePath(ex, ix, iy, iw, ih);
-        ex.stroke();
-        ex.restore();
-      }
-
-      // Connection lines
-      if (ci.showLines && ci.lineColor) {
-        const lines = computeConnectionLines(
-          { x: ox + ci.sel.x, y: oy + ci.sel.y, w: ci.sel.w, h: ci.sel.h },
-          { x: ix, y: iy }, iw, ih
-        );
-
-        let covered = false;
-        for (const ln of lines) {
-          for (const other of computed) {
-            if (other.id === ci.id) continue;
-            const ox2 = ox + other.insetX, oy2 = oy + other.insetY;
-            const ow2 = other.sel.w * other.zoom, oh2 = other.sel.h * other.zoom;
-            if (lineIntersectsRect(ln.x1, ln.y1, ln.x2, ln.y2, ox2, oy2, ow2, oh2)) {
-              covered = true;
-              break;
-            }
-          }
-          if (covered) break;
-        }
-
-        if (covered) {
-          ex.save();
-          const warnX = ix + iw / 2, warnY = iy - 10;
-          ex.font = 'bold 12px -apple-system, sans-serif';
-          ex.textAlign = 'center';
-          ex.textBaseline = 'bottom';
-          const tw = ex.measureText('放大图覆盖了连线').width;
-          ex.fillStyle = 'rgba(0,0,0,0.6)';
-          ex.fillRect(warnX - tw / 2 - 6, warnY - 16, tw + 12, 20);
-          ex.fillStyle = '#ff9800';
-          ex.fillText('放大图覆盖了连线', warnX, warnY);
-          ex.restore();
-        } else {
-          ex.strokeStyle = ci.lineColor;
-          ex.lineWidth = ci.lineWidth;
-          for (const ln of lines) {
-            ex.beginPath();
-            ex.moveTo(ln.x1, ln.y1);
-            ex.lineTo(ln.x2, ln.y2);
-            ex.stroke();
-          }
-        }
-      }
-    }
-  } finally {
-    shape = prevShape;
-  }
-
-  window._exportCanvas = ec;
+  window._exportCanvas = renderExportCanvas(img, imgW, imgH, insets);
   document.getElementById('exportFormat').value = 'image/png';
   document.getElementById('exportFilename').value = 'inset_zoom';
   updateExportPreview();
